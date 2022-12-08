@@ -20,9 +20,9 @@ class FractalNet(nn.Module):
         x = self.embedding(x)
         for i in range(self.depth):
             x = self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node, subgraph_batch_index, edge_attr)
-        x = self.output(x)
         # global pooling over nodes whose ground node is true
         x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
+        x = self.output(x)
         return x
 
 class FractalNetSeparated(nn.Module):
@@ -49,7 +49,6 @@ class FractalNetSeparated(nn.Module):
             x = self.ground_to_sub_mps[i](x, subnode_node_index, edge_attr)
             x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
             x = self.sub_to_ground_mps[i](x, node_subnode_index, edge_attr)
-        x = self.output(x)
         # global pooling over nodes whose ground node is true
         if self.pool == "mean":
             x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
@@ -57,6 +56,7 @@ class FractalNetSeparated(nn.Module):
             x = tg.nn.global_add_pool(x[ground_node], batch_idx)
         elif self.pool == "max":
             x = tg.nn.global_max_pool(x[ground_node], batch_idx)
+        x = self.output(x)
         return x
 
 class Net(nn.Module):
