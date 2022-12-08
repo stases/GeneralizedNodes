@@ -1,24 +1,83 @@
-################################################################################
-# MIT License
-#
-# Copyright (c) 2021 University of Amsterdam
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to conditions.
-#
-# Author: Deep Learning Course (UvA) | Fall 2021
-# Date Created: 2021-11-17
-################################################################################
-from __future__ import absolute_import, division, print_function
-
-import torch
 import torch.nn as nn
+import torch_geometric as tg
+import torch
 import torch.nn.functional as F
+from layers import FractalMP, MP
 import torch_geometric.nn as geom_nn
+from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
+
+class FractalNet(nn.Module):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1):
+        super().__init__()
+        self.depth = depth
+        self.embedding = nn.Linear(node_features, hidden_features)
+        self.fractal_mps = nn.ModuleList()
+        for i in range(depth):
+            self.fractal_mps.append(FractalMP(hidden_features, edge_features, hidden_features, hidden_features))
+        self.output = nn.Linear(hidden_features, out_features)
+
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+        x = self.embedding(x)
+        for i in range(self.depth):
+            x = self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node, subgraph_batch_index, edge_attr)
+        x = self.output(x)
+        # global pooling over nodes whose ground node is true
+        x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
+        return x
+
+class FractalNetSeparated(nn.Module):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean"):
+        super().__init__()
+        self.depth = depth
+        self.pool = pool
+        self.embedding = nn.Linear(node_features, hidden_features)
+        self.ground_mps = nn.ModuleList()
+        self.ground_to_sub_mps = nn.ModuleList()
+        self.sub_mps = nn.ModuleList()
+        self.sub_to_ground_mps = nn.ModuleList()
+        for i in range(depth):
+            self.ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.ground_to_sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+        self.output = nn.Linear(hidden_features, out_features)
+
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+        x = self.embedding(x)
+        for i in range(self.depth):
+            x = self.ground_mps[i](x, edge_index, edge_attr)
+            x = self.ground_to_sub_mps[i](x, subnode_node_index, edge_attr)
+            x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
+            x = self.sub_to_ground_mps[i](x, node_subnode_index, edge_attr)
+        x = self.output(x)
+        # global pooling over nodes whose ground node is true
+        if self.pool == "mean":
+            x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
+        elif self.pool == "add":
+            x = tg.nn.global_add_pool(x[ground_node], batch_idx)
+        elif self.pool == "max":
+            x = tg.nn.global_max_pool(x[ground_node], batch_idx)
+        return x
+
+class Net(nn.Module):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1):
+        super().__init__()
+        self.depth = depth
+        self.embedding = nn.Linear(node_features, hidden_features)
+        self.mps= nn.ModuleList()
+        for i in range(depth):
+            self.mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+        self.output = nn.Linear(hidden_features, out_features)
+
+    def forward(self, x, edge_index, batch_idx, edge_attr=None):
+        x = self.embedding(x)
+        for i in range(self.depth):
+            x = self.mps[i](x, edge_index, edge_attr)
+        x = self.output(x)
+        # global pooling over nodes whose ground node is true
+        x = tg.nn.global_mean_pool(x, batch_idx)
+        return x
+
 
 class GNN(nn.Module):
     """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.
@@ -33,7 +92,6 @@ class GNN(nn.Module):
             num_convolution_blocks: int,
     ) -> None:
         """create the gnn
-
         Args:
             n_node_features: input features on each node
             n_edge_features: input features on each edge
@@ -52,23 +110,20 @@ class GNN(nn.Module):
         super().__init__()
 
         layers = []
-        in_channels = n_node_features
-        not_only = False
-        self.embed = nn.Linear(n_node_features, n_hidden[0])
-        for l_idx, hidden_dim in enumerate(n_hidden):
+        in_channels, out_channels = n_node_features, n_hidden
+
+        self.embed = nn.Linear(n_node_features, n_hidden)
+        for l_idx in range(num_convolution_blocks):
             layers += [
                 nn.Identity() if l_idx == 0 else nn.ReLU(),
-                geom_nn.RGCNConv(in_channels=n_hidden[l_idx],
-                                 out_channels=n_hidden[l_idx + 1],
+                geom_nn.RGCNConv(in_channels=n_hidden,
+                                 out_channels=n_hidden,
                                  num_relations=n_edge_features),
                 nn.ReLU(),
-                geom_nn.MFConv(in_channels=n_hidden[l_idx],
-                               out_channels=n_hidden[l_idx + 1],
-                               max_degree=10) if not_only else nn.Identity()
+                geom_nn.MFConv(in_channels=n_hidden,
+                               out_channels=n_hidden,
+                               max_degree=10)
             ]
-            if (l_idx == len(n_hidden) - 2):
-                break
-        out_channels = n_hidden[-1]
         self.GNN = nn.ModuleList(layers)
         self.linear_1 = nn.Linear(out_channels, out_channels)
         self.linear_2 = nn.Linear(out_channels, 1)
@@ -90,12 +145,9 @@ class GNN(nn.Module):
             edge_index: List of vertex index pairs representing the edges in the graph (PyTorch geometric notation)
             edge_attr: edge attributes (pytorch geometric notation)
             batch_idx: Index of batch element for each node
-
         Returns:
             prediction
-
         TODO: implement the forward pass being careful to apply MLPs only where they are allowed!
-
         Hint: remember to use global pooling.
         """
 
@@ -103,7 +155,6 @@ class GNN(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         x = self.embed(x)
-        edge_index = edge_index.type(torch.int64)
         for layer in self.GNN:
             if (isinstance(layer, geom_nn.RGCNConv)):
                 x = layer(x, edge_index, edge_attr)
@@ -140,6 +191,7 @@ class GNN_no_rel(nn.Module):
             n_hidden: int,
             n_output: int,
             num_convolution_blocks: int,
+            pooling: str
     ) -> None:
         """create the gnn
 
@@ -174,7 +226,7 @@ class GNN_no_rel(nn.Module):
         self.GNN = nn.ModuleList(layers)
         self.linear_1 = nn.Linear(out_channels, out_channels)
         self.linear_2 = nn.Linear(out_channels, 1)
-
+        self.pooling = pooling
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -215,7 +267,12 @@ class GNN_no_rel(nn.Module):
 
             else:
                 x = layer(x)
-        x = geom_nn.global_add_pool(x, batch_idx)
+        if self.pooling == 'add':
+            x = geom_nn.global_add_pool(x, batch_idx)
+        elif self.pooling == 'mean':
+            x = geom_nn.global_mean_pool(x, batch_idx)
+        elif self.pooling == 'max':
+            x = geom_nn.global_max_pool(x, batch_idx)
         x = F.relu(self.linear_1(x))
         out = self.linear_2(x)
         #######################
