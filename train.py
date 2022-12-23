@@ -47,7 +47,7 @@ def get_forward_function(model, model_name, data, Z_ONE_HOT_DIM = 5):
 
     if model_name == 'FractalNet':
         data.batch = data.batch[data.ground_node]
-        out = model(data.x[:, :Z_ONE_HOT_DIM],
+        out = model(data.x,
               data.edge_index,
               data.subgraph_edge_index,
               data.node_subnode_index,

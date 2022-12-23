@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from layers import FractalMP, MP
 import torch_geometric.nn as geom_nn
 from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
+import os
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 class FractalNetShared(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
