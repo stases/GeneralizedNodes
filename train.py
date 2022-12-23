@@ -44,7 +44,17 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     return train, valid, test
 
 def get_forward_function(model, model_name, data, Z_ONE_HOT_DIM = 5):
-
+    if model_name == 'TransformerNet':
+        data.batch = data.batch[data.ground_node]
+        out = model(data.x,
+              data.edge_index,
+              data.subgraph_edge_index,
+              data.node_subnode_index,
+              data.subnode_node_index,
+              data.ground_node,
+              data.subgraph_batch_index,
+              data.batch)
+        return out
     if model_name == 'FractalNet':
         data.batch = data.batch[data.ground_node]
         out = model(data.x,

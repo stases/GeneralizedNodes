@@ -8,6 +8,47 @@ from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_poo
 import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
+class TransformerNet(nn.Module):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
+        super().__init__()
+        self.depth = depth
+        self.pool = pool
+        self.add_residual_skip = add_residual_skip
+        self.embedding = nn.Linear(node_features, hidden_features)
+        self.ground_mps = nn.ModuleList()
+        self.ground_to_sub_mps = nn.ModuleList()
+        self.sub_mps = nn.ModuleList()
+        self.sub_to_ground_mps = nn.ModuleList()
+        for i in range(depth):
+            self.ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.ground_to_sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.sub_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features))
+            self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+        self.output = nn.Linear(hidden_features, out_features)
+
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+        x = self.embedding(x)
+        for i in range(self.depth):
+            if self.add_residual_skip:
+                x_0 = x
+            x = self.ground_mps[i](x, edge_index, edge_attr)
+            #TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
+            x = self.ground_to_sub_mps[i](x, node_subnode_index, edge_attr)
+            x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
+            x = self.sub_to_ground_mps[i](x, subnode_node_index, edge_attr)
+            if self.add_residual_skip:
+                x = x + x_0
+        # global pooling over nodes whose ground node is true
+        if self.pool == "mean":
+            x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
+        elif self.pool == "add":
+            x = tg.nn.global_add_pool(x[ground_node], batch_idx)
+        elif self.pool == "max":
+            x = tg.nn.global_max_pool(x[ground_node], batch_idx)
+        x = self.output(x)
+        return x
+
+
 class FractalNetShared(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
         super().__init__()
@@ -61,6 +102,7 @@ class FractalNet(nn.Module):
             if self.add_residual_skip:
                 x_0 = x
             x = self.ground_mps[i](x, edge_index, edge_attr)
+            #TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
             x = self.ground_to_sub_mps[i](x, node_subnode_index, edge_attr)
             x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
             x = self.sub_to_ground_mps[i](x, subnode_node_index, edge_attr)
