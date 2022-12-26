@@ -9,21 +9,22 @@ import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 class TransformerNet(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", num_heads=1,add_residual_skip=False):
         super().__init__()
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
+        self.num_heads = num_heads
         self.embedding = nn.Linear(node_features, hidden_features)
         self.ground_mps = nn.ModuleList()
         self.ground_to_sub_mps = nn.ModuleList()
         self.sub_mps = nn.ModuleList()
         self.sub_to_ground_mps = nn.ModuleList()
         for i in range(depth):
-            self.ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
-            self.ground_to_sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
-            self.sub_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features))
-            self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            self.ground_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features, heads=num_heads))
+            self.ground_to_sub_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features, heads=num_heads))
+            self.sub_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features, heads=num_heads))
+            self.sub_to_ground_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features, heads=num_heads))
         self.output = nn.Linear(hidden_features, out_features)
 
     def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
