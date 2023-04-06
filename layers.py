@@ -117,3 +117,49 @@ class MP(tg.nn.MessagePassing):
         input = torch.cat((x, message), dim=-1)
         update = self.update_net(input)
         return update
+
+class SimpleMP(tg.nn.MessagePassing):
+    """Message Passing Neural Network Layer"""
+    def __init__(
+        self,
+        node_features,
+        edge_features,
+        hidden_features,
+        out_features,
+        aggr="add",
+        act=nn.ReLU,
+        edge_inference=False,
+    ):
+        super().__init__(aggr=aggr)
+        self.edge_inference = edge_inference
+        self.message_net = nn.Sequential(
+            nn.Linear(2 * node_features + edge_features, hidden_features),
+            act(),
+            nn.Linear(hidden_features, hidden_features),
+            act(),
+        )
+
+        if edge_inference:
+            self.edge_inferrer = nn.Sequential(
+                nn.Linear(hidden_features, 1), nn.Sigmoid()
+            )
+
+    def forward(self, x, edge_index, edge_attr=None):
+        """Propagate"""
+        x = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        return x
+
+    def message(self, x_i, x_j, edge_attr):
+        """Send message with edge attributes"""
+        input = [x_i, x_j, edge_attr]
+        input = [val for val in input if val is not None]
+        input = torch.cat(input, dim=-1)
+        message = self.message_net(input)
+
+        if self.edge_inference:
+            message = message * self.edge_inferrer(message)
+        return message
+
+    def update(self, message, x):
+        """Update node"""
+        return x if message is None else message

@@ -30,6 +30,7 @@ class Subgraph:
         if self.mode == 'fractal':
             self.subgraph.x = self.subgraph.x.repeat(self.num_nodes+1,1)
         self.num_features = self.subgraph.x.shape[1]
+        self.total_num_nodes = self.subgraph.x.shape[0]
 
         if self.mode == 'transformer':
             self.subgraph.x = torch.cat([self.subgraph.x, torch.zeros(self.num_nodes, self.transformer_size).to(self.device)], dim=1)
