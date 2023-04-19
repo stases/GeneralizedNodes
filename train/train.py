@@ -1,121 +1,47 @@
-import torch
 import numpy as np
-from warnings import warn
-from torch_geometric.datasets import QM9
-from torch.autograd import gradcheck
+import numpy as np
+import torch
 import torch.nn as nn
+from torch.autograd import gradcheck
 from torch_geometric.loader import DataLoader
-from models.gnn.networks import FractalNet
-from utils.subgraph import Graph_to_Subgraph
-
-def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
-    """Download the QM9 dataset from pytorch geometric. Put it onto the device. Split it up into train / validation / test.
-    Args:
-        data_dir: the directory to store the data.
-        device: put the data onto this device.
-    Returns:
-        train dataset, validation dataset, test dataset.
-    """
-    dataset = QM9(data_dir, transform=transform)
-
-    # Permute the dataset
-    try:
-        permu = torch.load("permute.pt")
-        dataset = dataset[permu]
-    except FileNotFoundError:
-        warn("Using non-standard permutation since permute.pt does not exist.")
-        dataset, _ = dataset.shuffle(return_perm=True)
-
-    # z score / standard score targets to mean = 0 and std = 1.
-    mean = dataset.data.y.mean(dim=0, keepdim=True)
-    std = dataset.data.y.std(dim=0, keepdim=True)
-    dataset.data.y = (dataset.data.y - mean) / std
-    mean, std = mean[:, LABEL_INDEX].item(), std[:, LABEL_INDEX].item()
-
-    # Move the data to the device (it should fit on lisa gpus)
-    dataset.data = dataset.data.to(device)
-
-    len_train = 100_000
-    len_val = 10_000
-
-    train = dataset[:len_train]
-    valid = dataset[len_train : len_train + len_val]
-    test = dataset[len_train + len_val :]
-
-    assert len(dataset) == len(train) + len(valid) + len(test)
-
-    return train, valid, test
-
-def get_forward_function(model, model_name, data, Z_ONE_HOT_DIM = 5):
-    if model_name == 'TransformerNet':
-        data.batch = data.batch[data.ground_node]
-        out = model(data.x,
-              data.edge_index,
-              data.subgraph_edge_index,
-              data.node_subnode_index,
-              data.subnode_node_index,
-              data.ground_node,
-              data.subgraph_batch_index,
-              data.batch)
-        return out
-    if model_name == 'FractalNet':
-        data.batch = data.batch[data.ground_node]
-        out = model(data.x,
-              data.edge_index,
-              data.subgraph_edge_index,
-              data.node_subnode_index,
-              data.subnode_node_index,
-              data.ground_node,
-              data.subgraph_batch_index,
-              data.batch)
-        return out
-    elif model_name == 'FractalNetShared':
-        data.batch = data.batch[data.ground_node]
-        out = model(data.x[:, :Z_ONE_HOT_DIM],
-              data.edge_index,
-              data.subgraph_edge_index,
-              data.node_subnode_index,
-              data.subnode_node_index,
-              data.ground_node,
-              data.subgraph_batch_index,
-              data.batch)
-        return out
-    elif model_name == 'GNN':
-        out = model(data.x[:, :Z_ONE_HOT_DIM],
-              data.edge_index,
-              data.edge_attr,
-              data.batch)
-        return out
-    elif model_name == 'GNN_no_rel':
-        out = model(data.x[:, :Z_ONE_HOT_DIM],
-              data.edge_index,
-              None,
-              data.batch)
-        return out
-    elif model_name == 'Net':
-        out = model(data.x[:, :Z_ONE_HOT_DIM],
-              data.edge_index,
-              data.batch)
-        return out
-    else:
-        raise ValueError("Model name not recognized")
-
 from tqdm.auto import tqdm
+import sys
+from get_fw_function import get_forward_function
+from get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
+from models.gnn.networks import FractalNet, FractalNetShared, GNN, GNN_no_rel, Net, TransformerNet
+from utils.subgraph import Graph_to_Subgraph
+from torch.utils.tensorboard import SummaryWriter
+import os
 
-def train_model(model, model_name, epochs, train_loader, valid_loader, test_loader, optimizer, criterion, scheduler, device, LABEL_INDEX=7, Z_ONE_HOT_DIM=5, debug=False, **kwargs):
+def path_finder(dir, file):
+    parent_dir = dir
+    name = file
+    path = os.path.join(parent_dir, name)
+
+    if os.path.exists(path):
+        i = 1
+        while os.path.exists(path + '_' + str(i)):
+            i += 1
+        name = name + '_' + str(i)
+        path = os.path.join(parent_dir, name)
+    return path
+def train_qm9_model(model, epochs, train_loader, valid_loader, test_loader, optimizer, criterion, scheduler, device, LABEL_INDEX=7, Z_ONE_HOT_DIM=5, debug=False, **kwargs):
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params}")
 
     train_losses = []
     val_losses = []
-    best_val_loss = np.inf
 
-    for epoch in tqdm(range(epochs), desc='Epochs', ncols='100%'):
+    best_val_loss = np.inf
+    model_name = model.name
+    writer = SummaryWriter(path_finder('logs', model_name))
+
+    for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         if debug:
             out, target = None, None
             for data in train_loader:
                 data = data.to(device)
-                out = get_forward_function(model, model_name, data, Z_ONE_HOT_DIM)
+                out = get_forward_function(model, data, Z_ONE_HOT_DIM)
                 target = data.y[:, LABEL_INDEX]
                 break
             out, target = out.double(), target.double()
@@ -129,27 +55,28 @@ def train_model(model, model_name, epochs, train_loader, valid_loader, test_load
         model.train()
         train_loss = 0
 
-        for data in tqdm(train_loader, desc='Training', ncols='100%'):
+        for data in tqdm(train_loader, desc='Training', ncols=100, leave=False, position=0, unit='batch', unit_scale=train_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
             data = data.to(device)
             optimizer.zero_grad()
             target = data.y[:, LABEL_INDEX]
-            out = get_forward_function(model, model_name, data, Z_ONE_HOT_DIM)
+            out = get_forward_function(model, data, Z_ONE_HOT_DIM)
             loss = criterion(out.squeeze(), target)
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
 
+        writer.add_scalar('Training Loss', train_loss / len(train_loader), epoch)
         model.eval()
         valid_loss = 0
 
         with torch.no_grad():
-            for data in tqdm(valid_loader, desc='Validation', ncols='100%'):
+            for data in tqdm(valid_loader, desc='Validation', ncols=100, leave=False, position=0, unit='batch', unit_scale=valid_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
                 data = data.to(device)
                 target = data.y[:, LABEL_INDEX]
-                out = get_forward_function(model, model_name, data)
+                out = get_forward_function(model, data, Z_ONE_HOT_DIM)
                 loss = criterion(out.squeeze(), target)
                 valid_loss += loss.item()
-
+        writer.add_scalar('Validation Loss', valid_loss / len(valid_loader), epoch)
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
             torch.save(model.state_dict(), f'models/{model_name}.pt')
@@ -160,31 +87,39 @@ def train_model(model, model_name, epochs, train_loader, valid_loader, test_load
         if scheduler is not None:
             scheduler.step(valid_loss / len(valid_loader))
 
-        print(f'Epoch: {epoch}, Loss: {train_loss / len(train_loader)}, Valid Loss: {valid_loss / len(valid_loader)}')
+        print(f'Epoch: {epoch}, Loss: {train_loss / len(train_loader)}, Valid Loss: {valid_loss / len(valid_loader)}', end='\r')
 
     # Test evaluation
     model.load_state_dict(torch.load(f'models/{model_name}.pt'))
     model.eval()
 
     test_loss = 0
-
+    unnormalized_loss = 0
     with torch.no_grad():
-        for data in tqdm(test_loader, desc='Testing', ncols='100%'):
+        # Get the dataset mean and std from the get_qm9.py file
+        mean, std = get_qm9_statistics('.data/qm9')
+        mean, std = mean[:, LABEL_INDEX], std[:, LABEL_INDEX]
+        for data in tqdm(test_loader, desc='Testing', ncols=100, leave=False, position=0, unit='batch', unit_scale=test_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
             data = data.to(device)
             target = data.y[:, LABEL_INDEX]
-            out = get_forward_function(model, model_name, data)
+            out = get_forward_function(model, data, Z_ONE_HOT_DIM)
             loss = criterion(out.squeeze(), target)
+            unnormalized_output, unnormalized_target = rescale(out.squeeze(), mean, std), rescale(target, mean, std)
+            unnormalized_loss += criterion(unnormalized_output, unnormalized_target).item()
             test_loss += loss.item()
 
     avg_test_loss = test_loss / len(test_loader)
     print(f'Test Loss: {avg_test_loss}')
-
-    return {'train_loss': train_losses, 'valid_loss': val_losses, 'test_loss': avg_test_loss, 'total_params': total_params}
+    avg_unnormalized_loss = unnormalized_loss / len(test_loader)
+    writer.add_scalar('Test Loss', avg_test_loss)
+    writer.add_scalar('Rescaled Test Loss', avg_unnormalized_loss)
+    writer.close()
+    return {'train_loss': train_losses, 'valid_loss': val_losses, 'test_loss': avg_test_loss, 'rescaled_test_loss': avg_unnormalized_loss}
 
 if __name__ == '__main__':
     # Experiment settings
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    epochs = 65
+    epochs = 1
     batch_size = 32
     node_features = 5
     Z_ONE_HOT_DIM = 5
@@ -193,7 +128,6 @@ if __name__ == '__main__':
     edge_features = 0
     hidden_features = 64
     out_features = 1
-    model_name = 'FractalNet'
 
     # Model, optimizer, and loss function
     model = FractalNet(node_features, edge_features, hidden_features, out_features, depth=4, pool='add', add_residual_skip=False, masking=True).to(device)
@@ -202,10 +136,10 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3, verbose=True)
 
     # Data preparation
-    train, valid, test = get_qm9("data/qm9", device=device, LABEL_INDEX=LABEL_INDEX, transform=Graph_to_Subgraph())
+    train, valid, test = get_qm9("./data/qm9", device=device, LABEL_INDEX=LABEL_INDEX, transform=Graph_to_Subgraph())
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
 
     # Training and evaluation
-    fractalnet_results = train_model(model, model_name, epochs, train_loader, valid_loader, test_loader, optimizer, criterion, scheduler, device, LABEL_INDEX, Z_ONE_HOT_DIM)
+    fractalnet_results = train_qm9_model(model, epochs, train_loader, valid_loader, test_loader, optimizer, criterion, scheduler, device, LABEL_INDEX, Z_ONE_HOT_DIM)

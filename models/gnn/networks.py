@@ -6,8 +6,8 @@ import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as geom_nn
 
-from layers import FractalMP, MP
 from utils.utils import catch_lone_sender
+from ..layers.layers import FractalMP, MP
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -16,6 +16,7 @@ class TransformerNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", num_heads=1,
                  add_residual_skip=False):
         super().__init__()
+        self.name = 'TransformerNet'
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
@@ -35,6 +36,7 @@ class TransformerNet(nn.Module):
     def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
                 subgraph_batch_index, batch_idx, edge_attr=None):
         x = self.embedding(x)
+
         for i in range(self.depth):
             if self.add_residual_skip:
                 x_0 = x
@@ -60,6 +62,7 @@ class FractalNetShared(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
                  add_residual_skip=False):
         super().__init__()
+        self.name = 'FractalNetShared'
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
@@ -94,6 +97,7 @@ class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
                  add_residual_skip=False, masking=False):
         super().__init__()
+        self.name = 'FractalNet'
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
@@ -114,7 +118,7 @@ class FractalNet(nn.Module):
                 subgraph_batch_index, batch_idx, edge_attr=None):
         num_nodes = x.shape[0]
         x = self.embedding(x)
-
+        # TODO: Is graph.y doing something weird with rescaling and normalizing etc? Shapes and stuff, or messing up the statistics
         for i in range(self.depth):
             if self.add_residual_skip:
                 x_0 = x
@@ -160,6 +164,7 @@ class FractalNet(nn.Module):
 class Net(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean"):
         super().__init__()
+        self.name = 'Net'
         self.depth = depth
         self.pool = pool
         self.embedding = nn.Linear(node_features, hidden_features)
@@ -207,7 +212,7 @@ class GNN(nn.Module):
         - One the data has been pooled, it may be beneficial to apply another MLP on the pooled data before predicing the output.
         """
         super().__init__()
-
+        self.name = 'GNN'
         layers = []
         in_channels, out_channels = n_node_features, n_hidden
 
@@ -306,7 +311,7 @@ class GNN_no_rel(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         super().__init__()
-
+        self.name = 'GNN_no_rel'
         layers = []
         in_channels, out_channels = n_node_features, n_hidden
 
