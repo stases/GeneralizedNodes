@@ -7,16 +7,16 @@ class GCN(nn.Module):
     """A simple GCN, Message Passing Model"""
 
     def __init__(
-        self,
-        node_features,
-        edge_features,
-        hidden_features,
-        out_features,
-        num_layers,
-        aggr="add",
-        act=nn.ReLU,
-        edge_inference=False,
-        pool="add",
+            self,
+            node_features,
+            edge_features,
+            hidden_features,
+            out_features,
+            num_layers,
+            aggr="add",
+            act=nn.ReLU,
+            edge_inference=False,
+            pool="add",
     ):
         super().__init__()
 
@@ -81,14 +81,14 @@ class MessagePassingLayer(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
 
     def __init__(
-        self,
-        node_features,
-        edge_features,
-        hidden_features,
-        out_features,
-        aggr="add",
-        act=nn.ReLU,
-        edge_inference=False,
+            self,
+            node_features,
+            edge_features,
+            hidden_features,
+            out_features,
+            aggr="add",
+            act=nn.ReLU,
+            edge_inference=False,
     ):
         super().__init__(aggr=aggr)
         self.edge_inference = edge_inference

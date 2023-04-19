@@ -2,17 +2,19 @@ import torch
 import torch.nn as nn
 import torch_geometric as tg
 
+
 class FractalMP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
+
     def __init__(
-        self,
-        node_features,
-        edge_features,
-        hidden_features,
-        out_features,
-        aggr="add",
-        act=nn.ReLU,
-        edge_inference=False,
+            self,
+            node_features,
+            edge_features,
+            hidden_features,
+            out_features,
+            aggr="add",
+            act=nn.ReLU,
+            edge_inference=False,
     ):
         super().__init__(aggr=aggr)
         self.edge_inference = edge_inference
@@ -34,14 +36,15 @@ class FractalMP(tg.nn.MessagePassing):
                 nn.Linear(hidden_features, 1), nn.Sigmoid()
             )
 
-    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, edge_attr=None):
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
+                subgraph_batch_index, edge_attr=None):
         """Propagate"""
         x = self.propagate(edge_index, x=x, edge_attr=edge_attr)
         x = self.propagate(node_subnode_index, x=x, edge_attr=edge_attr)
         x = self.propagate(subgraph_edge_index, x=x, edge_attr=edge_attr)
         x = self.propagate(subnode_node_index, x=x, edge_attr=edge_attr)
         # global pool over nodes whose ground node is false
-        #x[ground_node] = tg.nn.global_mean_pool(x[~ground_node], subgraph_batch_index)
+        # x[ground_node] = tg.nn.global_mean_pool(x[~ground_node], subgraph_batch_index)
         return x
 
     def message(self, x_i, x_j, edge_attr):
@@ -64,15 +67,16 @@ class FractalMP(tg.nn.MessagePassing):
 
 class MP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
+
     def __init__(
-        self,
-        node_features,
-        edge_features,
-        hidden_features,
-        out_features,
-        aggr="add",
-        act=nn.ReLU,
-        edge_inference=False,
+            self,
+            node_features,
+            edge_features,
+            hidden_features,
+            out_features,
+            aggr="add",
+            act=nn.ReLU,
+            edge_inference=False,
     ):
         super().__init__(aggr=aggr)
         self.edge_inference = edge_inference
@@ -98,7 +102,7 @@ class MP(tg.nn.MessagePassing):
         """Propagate"""
         x = self.propagate(edge_index, x=x, edge_attr=edge_attr)
         # global pool over nodes whose ground node is false
-        #x[ground_node] = tg.nn.global_mean_pool(x[~ground_node], subgraph_batch_index)
+        # x[ground_node] = tg.nn.global_mean_pool(x[~ground_node], subgraph_batch_index)
         return x
 
     def message(self, x_i, x_j, edge_attr):
@@ -118,17 +122,19 @@ class MP(tg.nn.MessagePassing):
         update = self.update_net(input)
         return update
 
+
 class SimpleMP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
+
     def __init__(
-        self,
-        node_features,
-        edge_features,
-        hidden_features,
-        out_features,
-        aggr="add",
-        act=nn.ReLU,
-        edge_inference=False,
+            self,
+            node_features,
+            edge_features,
+            hidden_features,
+            out_features,
+            aggr="add",
+            act=nn.ReLU,
+            edge_inference=False,
     ):
         super().__init__(aggr=aggr)
         self.edge_inference = edge_inference

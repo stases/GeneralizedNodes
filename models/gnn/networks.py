@@ -1,16 +1,20 @@
-import torch.nn as nn
-import torch_geometric as tg
-import torch
-import torch.nn.functional as F
-from layers import FractalMP, MP
-import torch_geometric.nn as geom_nn
-from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
 import os
-from utils import catch_lone_sender
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch_geometric as tg
+import torch_geometric.nn as geom_nn
+
+from layers import FractalMP, MP
+from utils.utils import catch_lone_sender
+
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
+
 class TransformerNet(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", num_heads=1,add_residual_skip=False):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", num_heads=1,
+                 add_residual_skip=False):
         super().__init__()
         self.depth = depth
         self.pool = pool
@@ -28,13 +32,14 @@ class TransformerNet(nn.Module):
             self.sub_to_ground_mps.append(geom_nn.GATv2Conv(hidden_features, hidden_features, heads=num_heads))
         self.output = nn.Linear(hidden_features, out_features)
 
-    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
+                subgraph_batch_index, batch_idx, edge_attr=None):
         x = self.embedding(x)
         for i in range(self.depth):
             if self.add_residual_skip:
                 x_0 = x
             x = self.ground_mps[i](x, edge_index, edge_attr)
-            #TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
+            # TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
             x = self.ground_to_sub_mps[i](x, node_subnode_index, edge_attr)
             x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
             x = self.sub_to_ground_mps[i](x, subnode_node_index, edge_attr)
@@ -50,8 +55,10 @@ class TransformerNet(nn.Module):
         x = self.output(x)
         return x
 
+
 class FractalNetShared(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
+                 add_residual_skip=False):
         super().__init__()
         self.depth = depth
         self.pool = pool
@@ -62,13 +69,16 @@ class FractalNetShared(nn.Module):
             self.fractal_mps.append(FractalMP(hidden_features, edge_features, hidden_features, hidden_features))
         self.output = nn.Linear(hidden_features, out_features)
 
-    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
+                subgraph_batch_index, batch_idx, edge_attr=None):
         x = self.embedding(x)
         for i in range(self.depth):
             if self.add_residual_skip:
-                x = x + self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, edge_attr)
+                x = x + self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index,
+                                            ground_node, subgraph_batch_index, edge_attr)
             else:
-                x = self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node, subgraph_batch_index, edge_attr)
+                x = self.fractal_mps[i](x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index,
+                                        ground_node, subgraph_batch_index, edge_attr)
         # global pooling over nodes whose ground node is true
         if self.pool == "mean":
             x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
@@ -79,12 +89,15 @@ class FractalNetShared(nn.Module):
         x = self.output(x)
         return x
 
+
 class FractalNet(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
+                 add_residual_skip=False, masking=False):
         super().__init__()
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
+        self.masking = masking
         self.embedding = nn.Linear(node_features, hidden_features)
         self.ground_mps = nn.ModuleList()
         self.ground_to_sub_mps = nn.ModuleList()
@@ -97,7 +110,8 @@ class FractalNet(nn.Module):
             self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
         self.output = nn.Linear(hidden_features, out_features)
 
-    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index ,ground_node, subgraph_batch_index, batch_idx, edge_attr=None):
+    def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
+                subgraph_batch_index, batch_idx, edge_attr=None):
         num_nodes = x.shape[0]
         x = self.embedding(x)
 
@@ -108,23 +122,27 @@ class FractalNet(nn.Module):
             update_mask = catch_lone_sender(edge_index, num_nodes)
             x_backup = x[~update_mask]
             x = self.ground_mps[i](x, edge_index, edge_attr)
-            x[~update_mask] = x_backup
-            #TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
+            if self.masking:
+                x[~update_mask] = x_backup
+            # TODO: Check the order of edge indices; directed in which direction? subnode to node or vice versa
 
             update_mask = catch_lone_sender(node_subnode_index, num_nodes)
             x_backup = x[~update_mask]
             x = self.ground_to_sub_mps[i](x, node_subnode_index, edge_attr)
-            x[~update_mask] = x_backup
+            if self.masking:
+                x[~update_mask] = x_backup
 
             update_mask = catch_lone_sender(subgraph_edge_index, num_nodes)
             x_backup = x[~update_mask]
             x = self.sub_mps[i](x, subgraph_edge_index, edge_attr)
-            x[~update_mask] = x_backup
+            if self.masking:
+                x[~update_mask] = x_backup
 
             update_mask = catch_lone_sender(subnode_node_index, num_nodes)
             x_backup = x[~update_mask]
             x = self.sub_to_ground_mps[i](x, subnode_node_index, edge_attr)
-            x[~update_mask] = x_backup
+            if self.masking:
+                x[~update_mask] = x_backup
 
             if self.add_residual_skip:
                 x = x + x_0
@@ -138,13 +156,14 @@ class FractalNet(nn.Module):
         x = self.output(x)
         return x
 
+
 class Net(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean"):
         super().__init__()
         self.depth = depth
         self.pool = pool
         self.embedding = nn.Linear(node_features, hidden_features)
-        self.mps= nn.ModuleList()
+        self.mps = nn.ModuleList()
         for i in range(depth):
             self.mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
         self.output = nn.Linear(hidden_features, out_features)
@@ -162,6 +181,7 @@ class Net(nn.Module):
         x = self.output(x)
         return x
 
+
 class GNN(nn.Module):
     """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.
     """
@@ -178,7 +198,7 @@ class GNN(nn.Module):
         Args:
             n_node_features: input features on each node
             n_edge_features: input features on each edge
-            n_hidden: hidden features within the neural networks (embeddings, nodes after graph convolutions, etc.)
+            n_hidden: hidden features within the neural architectures (embeddings, nodes after graph convolutions, etc.)
             n_output: how many output features
             num_convolution_blocks: how many blocks convolutions should be performed. A block may include multiple convolutions
 
@@ -273,7 +293,7 @@ class GNN_no_rel(nn.Module):
         Args:
             n_node_features: input features on each node
             n_edge_features: input features on each edge
-            n_hidden: hidden features within the neural networks (embeddings, nodes after graph convolutions, etc.)
+            n_hidden: hidden features within the neural architectures (embeddings, nodes after graph convolutions, etc.)
             n_output: how many output features
             num_convolution_blocks: how many blocks convolutions should be performed. A block may include multiple convolutions
 
@@ -362,6 +382,7 @@ class GNN_no_rel(nn.Module):
         """
         return next(self.parameters()).device
 
+
 class Fractal_GNN_no_rel(nn.Module):
     """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.
     """
@@ -380,7 +401,7 @@ class Fractal_GNN_no_rel(nn.Module):
         Args:
             n_node_features: input features on each node
             n_edge_features: input features on each edge
-            n_hidden: hidden features within the neural networks (embeddings, nodes after graph convolutions, etc.)
+            n_hidden: hidden features within the neural architectures (embeddings, nodes after graph convolutions, etc.)
             n_output: how many output features
             num_convolution_blocks: how many blocks convolutions should be performed. A block may include multiple convolutions
 
@@ -431,7 +452,6 @@ class Fractal_GNN_no_rel(nn.Module):
         self.Sub_GNN = nn.ModuleList(sub_layers)
         self.S_to_G_GNN = nn.ModuleList(s_to_g_layers)
 
-
         self.linear_1 = nn.Linear(out_channels, out_channels)
         self.linear_2 = nn.Linear(out_channels, 1)
         self.pooling = pooling
@@ -449,7 +469,7 @@ class Fractal_GNN_no_rel(nn.Module):
                 subgraph_batch_index,
                 batch_idx,
                 edge_attr=None
-    ) -> torch.Tensor:
+                ) -> torch.Tensor:
 
         x = self.embed(x)
         num_nodes = x.shape[0]
@@ -463,7 +483,6 @@ class Fractal_GNN_no_rel(nn.Module):
                 x[~update_mask] = x_backup
             else:
                 x = self.Ground_GNN[layer](x)
-
 
             update_mask = catch_lone_sender(node_subnode_index, num_nodes)
             x_backup = x[~update_mask]
