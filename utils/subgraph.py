@@ -47,7 +47,7 @@ class Subgraph:
         if hasattr(self.subgraph, 'x'):
             self.subgraph.ground_node = torch.arange(self.subgraph.x.shape[0]) < self.num_nodes
         else:
-            print('No node features found. Please add node features first.')
+            raise ValueError('No node features found. Please add node features first.')
 
     def add_subnode_edges(self):
         if self.mode == 'fractal':
