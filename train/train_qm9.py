@@ -79,7 +79,7 @@ def train_qm9_model(model, epochs, train_loader, valid_loader, test_loader, opti
         writer.add_scalar('Validation Loss', valid_loss / len(valid_loader), epoch)
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
-            torch.save(model.state_dict(), f'models/{model_name}.pt')
+            torch.save(model.state_dict(), f'trained/qm9/{model_name}.pt')
 
         train_losses.append(train_loss / len(train_loader))
         val_losses.append(valid_loss / len(valid_loader))

@@ -8,7 +8,7 @@ class Subgraph:
         self.subgraph = graph.clone().to(self.device)
         self.mode = mode
         #TODO: not have this hardcoded
-        self.crop_onehot = 5
+        self.crop_onehot = 5 # specific for QM9
         if 'transformer' in mode:
             self.mode = 'transformer'
             # split a string by underscore, for example transformer_3 into transformer and 3
