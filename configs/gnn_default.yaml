@@ -6,8 +6,8 @@ layernorm: True
 masking: True
 trainer: qm9
 learning_rate: 0.0003
-epochs: 3
-batch_size: 32
+epochs: 80
+batch_size: 64
 subgraph: True
 node_features: 5
 Z_ONE_HOT_DIM: 5

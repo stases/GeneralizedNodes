@@ -37,15 +37,14 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     # Move the data to the device (it should fit on lisa gpus)
     dataset.data = dataset.data.to(device)
 
-    len_train = 10_000
+    len_train = 100_000
     len_val = 10_000
 
     train = dataset[:len_train]
     valid = dataset[len_train : len_train + len_val]
-    #test = dataset[len_train + len_val :]
-    test = dataset[30_000:40_000]
+    test = dataset[len_train + len_val :]
 
-    #assert len(dataset) == len(train) + len(valid) + len(test)
+    assert len(dataset) == len(train) + len(valid) + len(test)
 
     return train, valid, test
 

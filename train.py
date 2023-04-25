@@ -1,13 +1,16 @@
 import sys
-import yaml
 import numpy as np
+import os
+from datetime import datetime
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.optim.lr_scheduler as lr_scheduler
+import yaml
+
 from models.gnn.networks import FractalNet, FractalNetShared, GNN, GNN_no_rel, Net, TransformerNet
 from trainers.train_qm9 import train_qm9_model
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import torch.optim.lr_scheduler as lr_scheduler
-
 
 #####################
 #  Helper functions #
@@ -73,8 +76,19 @@ device = config.get("device", "cuda")
 #####################
 
 #####################
+#   Creating dirs   #
+# check if the directory exists, if not create it
+if not os.path.exists(model_dir):
+    os.makedirs(model_dir)
+
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+#####################
+
+#####################
 # Generating run ID #
-config["run_id"] = np.random.randint(0, 1000000)
+#config["run_id"] = np.random.randint(0, 1000000)
+config["run_id"] = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 config["model_name"] = f"{model_arch}_{config['run_id']}"
 # save the current config to the model directory
 with open(f"{model_dir}/{config['model_name']}.yaml", "w") as f:
