@@ -1,7 +1,12 @@
-model_arch: fractalnet
+model_arch: net
+depth: 4
+pool: "mean"
+add_residual_skip: True
+layernorm: True
+masking: True
 trainer: qm9
 learning_rate: 0.0003
-epochs: 1
+epochs: 3
 batch_size: 32
 subgraph: True
 node_features: 5

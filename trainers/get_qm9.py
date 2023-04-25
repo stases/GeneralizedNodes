@@ -19,13 +19,14 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     """
     dataset = QM9(data_dir, transform=transform)
 
-    # Permute the dataset
+    #TODO: Check if we need permutations
+    '''# Permute the dataset
     try:
         permu = torch.load("permute.pt")
         dataset = dataset[permu]
     except FileNotFoundError:
         warn("Using non-standard permutation since permute.pt does not exist.")
-        dataset, _ = dataset.shuffle(return_perm=True)
+        dataset, _ = dataset.shuffle(return_perm=True)'''
 
     # z score / standard score targets to mean = 0 and std = 1.
     mean = dataset.data.y.mean(dim=0, keepdim=True)
@@ -36,14 +37,15 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     # Move the data to the device (it should fit on lisa gpus)
     dataset.data = dataset.data.to(device)
 
-    len_train = 100_000
+    len_train = 10_000
     len_val = 10_000
 
     train = dataset[:len_train]
     valid = dataset[len_train : len_train + len_val]
-    test = dataset[len_train + len_val :]
+    #test = dataset[len_train + len_val :]
+    test = dataset[30_000:40_000]
 
-    assert len(dataset) == len(train) + len(valid) + len(test)
+    #assert len(dataset) == len(train) + len(valid) + len(test)
 
     return train, valid, test
 

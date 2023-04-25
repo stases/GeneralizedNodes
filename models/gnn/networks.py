@@ -95,23 +95,28 @@ class FractalNetShared(nn.Module):
 
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
-                 add_residual_skip=False, masking=False, **kwargs):
+                 add_residual_skip=False, masking=False, layernorm=False, **kwargs):
         super().__init__()
         self.name = 'FractalNet'
         self.depth = depth
         self.pool = pool
         self.add_residual_skip = add_residual_skip
         self.masking = masking
+        self.layernorm = layernorm
         self.embedding = nn.Linear(node_features, hidden_features)
         self.ground_mps = nn.ModuleList()
         self.ground_to_sub_mps = nn.ModuleList()
         self.sub_mps = nn.ModuleList()
         self.sub_to_ground_mps = nn.ModuleList()
+        if self.layernorm:
+            self.ln = nn.ModuleList()
         for i in range(depth):
             self.ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
             self.ground_to_sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
             self.sub_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
             self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            if self.layernorm:
+                self.ln.append(nn.LayerNorm(hidden_features))
         self.output = nn.Linear(hidden_features, out_features)
 
     def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
@@ -148,8 +153,12 @@ class FractalNet(nn.Module):
             if self.masking:
                 x[~update_mask] = x_backup
 
+            if self.layernorm:
+                x = self.ln[i](x)
+
             if self.add_residual_skip:
                 x = x + x_0
+
         # global pooling over nodes whose ground node is true
         if self.pool == "mean":
             x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
@@ -162,21 +171,33 @@ class FractalNet(nn.Module):
 
 
 class Net(nn.Module):
-    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean"):
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean", add_residual_skip=False, layernorm=False, **kwargs):
         super().__init__()
         self.name = 'Net'
         self.depth = depth
         self.pool = pool
+        self.layernorm = layernorm
+        self.add_residual_skip = add_residual_skip
         self.embedding = nn.Linear(node_features, hidden_features)
         self.mps = nn.ModuleList()
+        if self.layernorm:
+            self.ln = nn.ModuleList()
         for i in range(depth):
             self.mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
+            if self.layernorm:
+                self.ln.append(nn.LayerNorm(hidden_features))
         self.output = nn.Linear(hidden_features, out_features)
 
     def forward(self, x, edge_index, batch_idx, edge_attr=None):
         x = self.embedding(x)
         for i in range(self.depth):
+            x_0 = x
             x = self.mps[i](x, edge_index, edge_attr)
+            if self.layernorm:
+                x = self.ln[i](x)
+            if self.add_residual_skip:
+                x = x + x_0
+
         if self.pool == "mean":
             x = tg.nn.global_mean_pool(x, batch_idx)
         elif self.pool == "add":

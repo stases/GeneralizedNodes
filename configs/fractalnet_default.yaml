@@ -1,0 +1,36 @@
+model_arch: fractalnet
+depth: 4
+pool: "mean"
+add_residual_skip: True
+layernorm: True
+masking: True
+trainer: qm9
+learning_rate: 0.0003
+epochs: 3
+batch_size: 32
+subgraph: True
+node_features: 5
+Z_ONE_HOT_DIM: 5
+LABEL_INDEX: 7
+EDGE_ATTR_DIM: 4
+edge_features: 0
+hidden_features: 64
+out_features: 1
+data_dir: "./data/qm9"
+model_dir: "./trained/qm9"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: MSELoss
+scheduler:
+  name: ReduceLROnPlateau
+  kwargs:
+    mode: 'min'
+    factor: 0.1
+    patience: 5
+    verbose: True
+device: cuda

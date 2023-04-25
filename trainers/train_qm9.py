@@ -101,7 +101,7 @@ def train_qm9_model(model, model_name, data_dir, subgraph, epochs, batch_size, o
         print(f'Epoch: {epoch}, Loss: {train_loss / len(train_loader)}, Valid Loss: {valid_loss / len(valid_loader)}', end='\r')
 
     # Test evaluation
-    model.load_state_dict(torch.load(f'models/{model_name}.pt'))
+    model.load_state_dict(torch.load(f'trained/qm9/{model_name}.pt'))
     model.eval()
 
     test_loss = 0
@@ -124,6 +124,7 @@ def train_qm9_model(model, model_name, data_dir, subgraph, epochs, batch_size, o
     avg_unnormalized_loss = unnormalized_loss / len(test_loader)
     writer.add_scalar('Test Loss', avg_test_loss)
     writer.add_scalar('Rescaled Test Loss', avg_unnormalized_loss)
+    writer.add_scalar('Total number of parameters:', total_params)
     writer.close()
     return {'train_loss': train_losses, 'valid_loss': val_losses, 'test_loss': avg_test_loss, 'rescaled_test_loss': avg_unnormalized_loss}
 
