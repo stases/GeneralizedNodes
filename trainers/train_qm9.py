@@ -1,13 +1,12 @@
 import numpy as np
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
 from torch_geometric.loader import DataLoader
 from tqdm.auto import tqdm
 import sys
-from get_fw_function import get_forward_function
-from get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
+from .get_fw_function import get_forward_function
+from .get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
 from models.gnn.networks import FractalNet, FractalNetShared, GNN, GNN_no_rel, Net, TransformerNet
 from utils.subgraph import Graph_to_Subgraph
 from torch.utils.tensorboard import SummaryWriter
@@ -25,7 +24,19 @@ def path_finder(dir, file):
         name = name + '_' + str(i)
         path = os.path.join(parent_dir, name)
     return path
-def train_qm9_model(model, epochs, train_loader, valid_loader, test_loader, optimizer, criterion, scheduler, device, LABEL_INDEX=7, Z_ONE_HOT_DIM=5, debug=False, **kwargs):
+
+def get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size):
+    transform = Graph_to_Subgraph() if subgraph else None
+    if subgraph:
+        print("Using subgraph dataset.\n")
+    else:
+        print("Using regular dataset.\n")
+    train, valid, test = get_qm9(data_dir, device=device, LABEL_INDEX=LABEL_INDEX, transform=Graph_to_Subgraph())
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
+    return train_loader, valid_loader, test_loader
+def train_qm9_model(model, model_name, data_dir, subgraph, epochs, batch_size, optimizer, criterion, scheduler, device, LABEL_INDEX=7, Z_ONE_HOT_DIM=5, debug=False, **kwargs):
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params}")
 
@@ -33,9 +44,9 @@ def train_qm9_model(model, epochs, train_loader, valid_loader, test_loader, opti
     val_losses = []
 
     best_val_loss = np.inf
-    model_name = model.name
-    writer = SummaryWriter(path_finder('logs', model_name))
-
+    #writer = SummaryWriter(path_finder('logs', model_name))
+    writer = SummaryWriter('logs/' + model_name)
+    train_loader, valid_loader, test_loader = get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size)
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         if debug:
             out, target = None, None

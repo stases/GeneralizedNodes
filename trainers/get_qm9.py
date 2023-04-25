@@ -10,12 +10,12 @@ def get_qm9_statistics(data_dir):
     return mean, std
 
 def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
-    """Download the QM9 dataset from pytorch geometric. Put it onto the device. Split it up into train / validation / test.
+    """Download the QM9 dataset from pytorch geometric. Put it onto the device. Split it up into trainers / validation / test.
     Args:
         data_dir: the directory to store the data.
         device: put the data onto this device.
     Returns:
-        train dataset, validation dataset, test dataset.
+        trainers dataset, validation dataset, test dataset.
     """
     dataset = QM9(data_dir, transform=transform)
 

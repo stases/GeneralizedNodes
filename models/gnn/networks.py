@@ -95,7 +95,7 @@ class FractalNetShared(nn.Module):
 
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="mean",
-                 add_residual_skip=False, masking=False):
+                 add_residual_skip=False, masking=False, **kwargs):
         super().__init__()
         self.name = 'FractalNet'
         self.depth = depth
