@@ -2,7 +2,7 @@
 
 # Set the source and destination paths
 source_path="thadzi@snellius.surf.nl:/home/thadzi/GitHub/FractalMessagePassing/logs"
-dest_path="/home/tin/Documents/Github/FractalMessagePassing/downloaded_logs/"
+dest_path="downloaded_logs/"
 
 # Copy the logs folder from the remote server to the local machine
 echo "Copying logs folder from remote server..."

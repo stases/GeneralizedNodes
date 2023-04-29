@@ -1,14 +1,14 @@
-model_arch: net
+model_arch: mf_fractalnet
 depth: 4
 pool: "mean"
 add_residual_skip: True
 layernorm: True
-masking: False
+masking: True
 trainer: qm9
 learning_rate: 0.0003
 epochs: 80
 batch_size: 64
-subgraph: False
+subgraph: True
 node_features: 5
 Z_ONE_HOT_DIM: 5
 LABEL_INDEX: 7
