@@ -396,7 +396,8 @@ class GNN_no_rel(nn.Module):
             n_hidden: int,
             n_output: int,
             num_convolution_blocks: int,
-            pooling: str
+            pooling: str,
+            **kwargs
     ) -> None:
         """create the gnn
 
