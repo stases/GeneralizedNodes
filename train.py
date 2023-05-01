@@ -1,6 +1,5 @@
-import sys
-import numpy as np
 import os
+import sys
 from datetime import datetime
 
 import torch
@@ -9,19 +8,17 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 
-from models.gnn.networks import FractalNet, FractalNetShared, GNN, GNN_no_rel, Net, TransformerNet, MF_FractalNet
+from models.gnn.networks import FractalNet, GNN, GNN_no_rel, Net, TransformerNet
 from trainers.train_qm9 import train_qm9_model
 
 #####################
 #  Helper functions #
 MODEL_MAP = {
     "fractalnet": FractalNet,
-    "mf_fractalnet": MF_FractalNet,
     "net": Net,
     "transformernet": TransformerNet,
     "gnn": GNN,
-    "gnn_no_rel": GNN_no_rel,
-    "fractalnet_shared": FractalNetShared,
+    "gnn_no_rel": GNN_no_rel
     # Add more models here
 }
 

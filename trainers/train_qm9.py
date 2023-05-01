@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 import sys
 from .get_fw_function import get_forward_function
 from .get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
-from models.gnn.networks import FractalNet, FractalNetShared, GNN, GNN_no_rel, Net, TransformerNet
+from models.gnn.networks import FractalNet, GNN, GNN_no_rel, Net, TransformerNet
 from utils.subgraph import Graph_to_Subgraph
 from torch.utils.tensorboard import SummaryWriter
 import os
