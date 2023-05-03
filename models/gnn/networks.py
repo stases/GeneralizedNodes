@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as geom_nn
 
-from utils.utils import catch_lone_sender, fully_connected_edge_index
+from utils.tools import catch_lone_sender, fully_connected_edge_index
 from ..layers.layers import FractalMP, MP
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
@@ -60,7 +60,7 @@ class TransformerNet(nn.Module):
 
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="add",
-                 add_residual_skip=False, masking=False, layernorm=False, fc_ground=False, fc_sub=False, **kwargs):
+                 add_residual_skip=False, masking=False, layernorm=False, **kwargs):
         super().__init__()
         self.name = 'FractalNet'
         self.depth = depth
@@ -68,8 +68,6 @@ class FractalNet(nn.Module):
         self.add_residual_skip = add_residual_skip
         self.masking = masking
         self.layernorm = layernorm
-        self.fc_ground = fc_ground
-        self.fc_sub = fc_sub
         self.embedding = nn.Linear(node_features, hidden_features)
         self.ground_mps = nn.ModuleList()
         self.ground_to_sub_mps = nn.ModuleList()
@@ -90,13 +88,6 @@ class FractalNet(nn.Module):
                 subgraph_batch_index, batch_idx, edge_attr=None):
         num_nodes = x.shape[0]
         x = self.embedding(x)
-
-        # Make the original graph fully connected
-        if self.fc_ground:
-            edge_index = fully_connected_edge_index(num_nodes)
-        # Make the subgraph fully connected
-        if self.fc_sub:
-            subgraph_edge_index = fully_connected_edge_index(num_nodes)
 
         # TODO: Is graph.y doing something weird with rescaling and normalizing etc? Shapes and stuff, or messing up the statistics
         for i in range(self.depth):
@@ -143,7 +134,6 @@ class FractalNet(nn.Module):
             x = tg.nn.global_max_pool(x[ground_node], batch_idx)
         x = self.output(x)
         return x
-
 
 
 class Net(nn.Module):

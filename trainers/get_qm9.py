@@ -29,11 +29,12 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
         dataset, _ = dataset.shuffle(return_perm=True)'''
 
     # z score / standard score targets to mean = 0 and std = 1.
-    mean = dataset.data.y.mean(dim=0, keepdim=True)
+    # TODO: Ignore for now, done in the training loop
+    '''mean = dataset.data.y.mean(dim=0, keepdim=True)
     std = dataset.data.y.std(dim=0, keepdim=True)
     dataset.data.y = (dataset.data.y - mean) / std
     mean, std = mean[:, LABEL_INDEX].item(), std[:, LABEL_INDEX].item()
-
+    '''
     # Move the data to the device (it should fit on lisa gpus)
     dataset.data = dataset.data.to(device)
 

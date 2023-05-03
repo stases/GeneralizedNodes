@@ -1,20 +1,21 @@
 model_arch: net
 depth: 4
-pool: "mean"
+pool: "add"
 add_residual_skip: True
 layernorm: True
 masking: False
 trainer: qm9
 learning_rate: 0.0003
-epochs: 80
-batch_size: 64
+epochs: 150
+batch_size: 128
 subgraph: False
-node_features: 5
-Z_ONE_HOT_DIM: 5
+fully_connect: True
+node_features: 11
+Z_ONE_HOT_DIM: 11
 LABEL_INDEX: 7
 EDGE_ATTR_DIM: 4
 edge_features: 0
-hidden_features: 64
+hidden_features: 128
 out_features: 1
 data_dir: "./data/qm9"
 model_dir: "./trained/qm9"
@@ -25,12 +26,9 @@ optimizer:
     betas: [0.9, 0.999]
     eps: 1e-8
 criterion:
-  name: MSELoss
+  name: L1Loss
 scheduler:
-  name: ReduceLROnPlateau
+  name: CosineAnnealingLR
   kwargs:
-    mode: 'min'
-    factor: 0.1
-    patience: 5
-    verbose: True
+    T_max: ${epochs}
 device: cuda

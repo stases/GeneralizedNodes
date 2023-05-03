@@ -1,28 +1,38 @@
 import torch
+from .tools import catch_lone_sender, fully_connected_edge_index, fully_connect_existing_nodes
 from torch_geometric.transforms import BaseTransform
 
 class Subgraph:
-    def __init__(self, graph, mode='fractal', depth=1):
+    def __init__(self, graph, mode='fractal', fully_connect=False, depth=1):
         self.device = graph.x.device
         self.num_nodes = graph.x.shape[0]
         self.subgraph = graph.clone().to(self.device)
         self.mode = mode
+        self.fully_connect = fully_connect
         #TODO: not have this hardcoded
-        self.crop_onehot = 5 # specific for QM9
+        self.crop_onehot = None # 5 is specific for QM9
         if 'transformer' in mode:
             self.mode = 'transformer'
             # split a string by underscore, for example transformer_3 into transformer and 3
             self.transformer_size = int(mode.split('_')[1])
 
     def convert_to_subgraph(self):
+        if self.fully_connect:
+            self.add_fully_connected_edges()
         self.add_subnode_features()
         self.add_node_flags()
         self.add_subnode_edges()
         self.add_node_subnode_edges()
         self.add_subnode_node_edges()
         self.add_subgraph_batch_index()
+
         return self.subgraph
 
+    def add_fully_connected_edges(self):
+        # This uses fully_connect_existing_nodes from tools.py, as we want to get a fully connecte graph in a given range
+        # We don't want to connect accidentally nodes that are not in the subgraph, and vice-versa
+        self.subgraph.edge_index = fully_connect_existing_nodes(edge_index=self.subgraph.edge_index).to(self.device)
+        #self.subgraph.subgraph_edge_index = fully_connect_existing_nodes(edge_index=self.subgraph.subgraph_edge_index).to(self.device)
     def add_subnode_features(self):
         if self.crop_onehot:
             # take only the self.crop_onehot first features
@@ -68,7 +78,6 @@ class Subgraph:
                 self.subgraph.subgraph_edge_index = torch.cat([self.subgraph.subgraph_edge_index,
                                                                transformer_edge_index  + self.num_nodes + (subg+1)*self.transformer_size],
                                                               dim=1).to(self.device)
-
     def add_node_subnode_edges(self):
         if self.mode == 'fractal':
             self.subgraph.node_subnode_index = torch.stack([torch.arange(self.num_nodes).repeat_interleave(self.num_nodes),
@@ -92,12 +101,4 @@ class Subgraph:
             self.subgraph.subgraph_batch_index = torch.arange(self.num_nodes).repeat_interleave(self.num_nodes)
         elif self.mode == 'transformer':
             self.subgraph.subgraph_batch_index = torch.arange(self.num_nodes).repeat_interleave(self.transformer_size)
-
-class Graph_to_Subgraph(BaseTransform):
-    def __init__(self, mode='fractal', depth=1):
-        self.mode = mode
-        self.depth = depth
-    def __call__(self, data):
-        subgraph = Subgraph(data, mode=self.mode, depth=self.depth)
-        return subgraph.convert_to_subgraph()
 

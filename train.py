@@ -43,6 +43,7 @@ CRITERION_MAP = {
 SCHEDULER_MAP = {
     "ReduceLROnPlateau": lr_scheduler.ReduceLROnPlateau,
     "StepLR": lr_scheduler.StepLR,
+    "CosineAnnealingLR": lr_scheduler.CosineAnnealingLR,
     # Add more schedulers here
 }
 
@@ -140,6 +141,8 @@ if criterion_class is None:
 # Instantiate the criterion using kwargs from the YAML configuration file
 criterion = criterion_class(**criterion_kwargs)
 config["criterion"] = criterion
+# Print criterion info
+print(f"Using {criterion_name} criterion with kwargs: {criterion_kwargs}")
 #####################
 
 #####################
@@ -156,6 +159,9 @@ if scheduler_class is None:
 # Instantiate the scheduler using kwargs from the YAML configuration file
 scheduler = scheduler_class(optimizer, **scheduler_kwargs)
 config["scheduler"] = scheduler
+config["scheduler_name"] = scheduler_name
+# Print scheduler info
+print(f"Using {scheduler_name} scheduler with kwargs: {scheduler_kwargs}")
 #####################
 
 #####################
