@@ -1,5 +1,5 @@
 import os
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -60,7 +60,7 @@ class TransformerNet(nn.Module):
 
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="add",
-                 add_residual_skip=False, masking=False, layernorm=False, **kwargs):
+                 add_residual_skip=False, masking=False, layernorm=False, pool_all=False,**kwargs):
         super().__init__()
         self.name = 'FractalNet'
         self.depth = depth
@@ -68,6 +68,7 @@ class FractalNet(nn.Module):
         self.add_residual_skip = add_residual_skip
         self.masking = masking
         self.layernorm = layernorm
+        self.pool_all = pool_all
         self.embedding = nn.Linear(node_features, hidden_features)
         self.ground_mps = nn.ModuleList()
         self.ground_to_sub_mps = nn.ModuleList()
@@ -82,7 +83,9 @@ class FractalNet(nn.Module):
             self.sub_to_ground_mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
             if self.layernorm:
                 self.ln.append(nn.LayerNorm(hidden_features))
-        self.output = nn.Linear(hidden_features, out_features)
+        self.output_1 = nn.Linear(hidden_features, hidden_features)
+        self.output_2 = nn.Linear(hidden_features, out_features)
+
 
     def forward(self, x, edge_index, subgraph_edge_index, node_subnode_index, subnode_node_index, ground_node,
                 subgraph_batch_index, batch_idx, edge_attr=None):
@@ -127,12 +130,23 @@ class FractalNet(nn.Module):
 
         # global pooling over nodes whose ground node is true
         if self.pool == "mean":
-            x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
+            if self.pool_all:
+                x = tg.nn.global_mean_pool(x, batch_idx)
+            else:
+                x = tg.nn.global_mean_pool(x[ground_node], batch_idx)
         elif self.pool == "add":
-            x = tg.nn.global_add_pool(x[ground_node], batch_idx)
+            if self.pool_all:
+                x = tg.nn.global_add_pool(x, batch_idx)
+            else:
+                x = tg.nn.global_add_pool(x[ground_node], batch_idx)
         elif self.pool == "max":
-            x = tg.nn.global_max_pool(x[ground_node], batch_idx)
-        x = self.output(x)
+            if self.pool_all:
+                x = tg.nn.global_max_pool(x, batch_idx)
+            else:
+                x = tg.nn.global_max_pool(x[ground_node], batch_idx)
+
+        x = self.output_1(x)
+        x = self.output_2(x)
         return x
 
 
@@ -152,7 +166,8 @@ class Net(nn.Module):
             self.mps.append(MP(hidden_features, edge_features, hidden_features, hidden_features))
             if self.layernorm:
                 self.ln.append(nn.LayerNorm(hidden_features))
-        self.output = nn.Linear(hidden_features, out_features)
+        self.output_1 = nn.Linear(hidden_features, hidden_features)
+        self.output_2 = nn.Linear(hidden_features, out_features)
 
     def forward(self, x, edge_index, batch_idx, edge_attr=None):
         x = self.embedding(x)
@@ -170,7 +185,8 @@ class Net(nn.Module):
             x = tg.nn.global_add_pool(x, batch_idx)
         elif self.pool == "max":
             x = tg.nn.global_max_pool(x, batch_idx)
-        x = self.output(x)
+        x = self.output_1(x)
+        x = self.output_2(x)
         return x
 
 class GNN(nn.Module):
