@@ -12,6 +12,7 @@ from utils.transforms import Graph_to_Subgraph, Fully_Connected_Graph
 from utils.tools import compute_mean_mad
 from torch.utils.tensorboard import SummaryWriter
 import os
+import torch.nn.utils as utils
 
 def path_finder(dir, file):
     parent_dir = dir
@@ -57,6 +58,7 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
     writer.add_scalar('Total number of parameters:', total_params)
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect)
     mean, mad = compute_mean_mad(train_loader, LABEL_INDEX)
+    clip_value = 1.0
     # Set up scheduler
     if scheduler_name == 'CosineAnnealingLR':
         scheduler.T_max = epochs
@@ -95,6 +97,7 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
             loss.backward()
             train_loss += loss.item()
             train_mae += mae.item()
+            utils.clip_grad_norm_(model.parameters(), clip_value)
             optimizer.step()
         writer.add_scalar('Training Loss', train_loss / len(train_loader), epoch)
         writer.add_scalar('Training MAE', train_mae / len(train_loader), epoch)
