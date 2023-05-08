@@ -8,7 +8,7 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 
-from models.gnn.networks import FractalNet, GNN, GNN_no_rel, Net, TransformerNet
+from models.gnn.networks import FractalNet, GNN, GNN_no_rel, Net, TransformerNet, EGNN
 from trainers.train_qm9 import train_qm9_model
 
 #####################
@@ -18,7 +18,8 @@ MODEL_MAP = {
     "net": Net,
     "transformernet": TransformerNet,
     "gnn": GNN,
-    "gnn_no_rel": GNN_no_rel
+    "gnn_no_rel": GNN_no_rel,
+    "EGNN": EGNN,
     # Add more models here
 }
 

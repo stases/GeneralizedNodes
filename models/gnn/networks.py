@@ -7,7 +7,7 @@ import torch_geometric as tg
 import torch_geometric.nn as geom_nn
 
 from utils.tools import catch_lone_sender, fully_connected_edge_index
-from ..layers.layers import FractalMP, MP
+from ..layers.layers import FractalMP, MP, EGNNLayer
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -188,6 +188,51 @@ class Net(nn.Module):
         x = self.output_1(x)
         x = self.output_2(x)
         return x
+
+class EGNN(nn.Module):
+    def __init__(self, node_features, hidden_features, out_features, depth, **kwargs):
+        super().__init__()
+        self.name = "EGNN"
+        self.embed = nn.Sequential(nn.Linear(node_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
+        self.layers = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
+        self.pre_readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
+        self.readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, out_features))
+
+    def forward(self, data):
+        x, pos, edge_index, batch_idx = data.x, data.pos, data.edge_index, data.batch
+        x = self.embed(x)
+
+        for layer in self.layers:
+            x = x + layer(x, pos, edge_index)
+
+        x = self.pre_readout(x)
+        x = tg.nn.global_add_pool(x, batch_idx)
+        out = self.readout(x)
+        return out
+
+class Fractal_EGNN(nn.Module):
+    def __init__(self, node_features, hidden_features, out_features, depth, **kwargs):
+        super().__init__()
+        self.name = "Fractal_EGNN"
+        self.embed = nn.Sequential(nn.Linear(node_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
+        self.ground_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
+        self.ground_to_sub_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
+        self.sub_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
+        self.sub_to_ground_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
+        self.pre_readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
+        self.readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, out_features))
+
+    def forward(self, data):
+        x, pos, edge_index, batch_idx = data.x, data.pos, data.edge_index, data.batch
+        x = self.embed(x)
+
+        for layer in self.layers:
+            x = x + layer(x, pos, edge_index)
+
+        x = self.pre_readout(x)
+        x = tg.nn.global_add_pool(x, batch_idx)
+        out = self.readout(x)
+        return out
 
 class GNN(nn.Module):
     """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.

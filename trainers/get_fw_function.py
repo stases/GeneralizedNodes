@@ -13,5 +13,8 @@ def get_forward_function(model, data, Z_ONE_HOT_DIM, **kwargs):
     elif model_name in ['GNN', 'GNN_no_rel']:
         out = model(data.x[:, :Z_ONE_HOT_DIM], data.edge_index, data.edge_attr, data.batch, **kwargs)
         return out
+    elif model_name in ['EGNN']:
+        out = model(data)
+        return out
     else:
         raise ValueError("Model name not recognized")
