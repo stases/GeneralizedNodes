@@ -9,7 +9,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 
 from models.gnn.networks import *
-from trainers.train_qm9 import train_qm9_model
+from trainers.train_qm9_debug import train_qm9_model
 
 #####################
 #  Helper functions #

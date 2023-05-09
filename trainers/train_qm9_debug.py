@@ -49,45 +49,77 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
     print(f"Total number of parameters: {total_params}")
     print("Using subgraph dataset: ", subgraph)
     print("Using fully connected subgraph dataset: ", fully_connect)
-
     train_losses = []
     val_losses = []
-    best_val_loss = np.inf
 
+    best_val_loss = np.inf
+    #writer = SummaryWriter(path_finder('logs', model_name))
     writer = SummaryWriter('logs/' + model_name)
     writer.add_scalar('Total number of parameters:', total_params)
-
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect)
     mean, mad = compute_mean_mad(train_loader, LABEL_INDEX)
     # Set up scheduler
-
+    if scheduler_name == 'CosineAnnealingLR':
+        scheduler.T_max = epochs
+        print('Using CosineAnnealingLR scheduler')
+        print('T_max:', scheduler.T_max)
+        print('eta_min:', scheduler.eta_min)
+    # Debugging code
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
+        if debug:
+            out, target = None, None
+            for data in train_loader:
+                data = data.to(device)
+                out = get_forward_function(model, data, Z_ONE_HOT_DIM).squeeze()
+                target = data.y[:, LABEL_INDEX]
+                break
+            out, target = out.double(), target.double()
+            criterion = criterion.double()
+            gradcheck_result = gradcheck(criterion, (out.squeeze(), target), eps=1e-4, atol=1e-4)
+            if not gradcheck_result:
+                raise ValueError('Gradient check failed')
+            else:
+                print('Gradient check passed at the beginning of epoch', epoch)
+
         # Training loop
         model.train()
-        train_loss, train_mae = 0, 0
+        train_loss = 0
+        train_mae = 0
         for data in tqdm(train_loader, desc='Training', ncols=100, leave=False, position=0, unit='batch', unit_scale=train_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
             data = data.to(device)
             optimizer.zero_grad()
             target = data.y[:, LABEL_INDEX]
-            out = model(data).squeeze()
+            out = get_forward_function(model, data, Z_ONE_HOT_DIM).squeeze()
+            #loss = criterion(out.squeeze(), target)
             loss = criterion(out, (target - mean) / mad)
             mae = criterion(out * mad + mean, target)
             loss.backward()
             train_loss += loss.item()
             train_mae += mae.item()
             utils.clip_grad_norm_(model.parameters(), 1.0)
+            # calculate the average gradient of all parameters and print it
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    if torch.isnan(param.grad).any():
+                        print(f'NaN gradient in {name}')
+                    if torch.isinf(param.grad).any():
+                        print(f'Inf gradient in {name}')
+                else:
+                    print(f'None gradient in {name}')
             optimizer.step()
         writer.add_scalar('Training Loss', train_loss / len(train_loader), epoch)
         writer.add_scalar('Training MAE', train_mae / len(train_loader), epoch)
 
         # Validation loop
         model.eval()
-        valid_loss, valid_mae = 0, 0
+        valid_loss = 0
+        valid_mae = 0
         with torch.no_grad():
             for data in tqdm(valid_loader, desc='Validation', ncols=100, leave=False, position=0, unit='batch', unit_scale=valid_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
                 data = data.to(device)
                 target = data.y[:, LABEL_INDEX]
-                out = model(data).squeeze()
+                out = get_forward_function(model, data, Z_ONE_HOT_DIM).squeeze()
+                # loss = criterion(out.squeeze(), target)
                 loss = criterion(out, (target - mean) / mad)
                 mae = criterion(out * mad + mean, target)
                 valid_loss += loss.item()
@@ -99,6 +131,9 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
             torch.save(model.state_dict(), f'trained/qm9/{model_name}.pt')
+
+        train_losses.append(train_loss / len(train_loader))
+        val_losses.append(valid_loss / len(valid_loader))
 
         if scheduler is not None:
             if scheduler_name == 'ReduceLROnPlateau':
@@ -113,23 +148,36 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
     model.load_state_dict(torch.load(f'trained/qm9/{model_name}.pt'))
     model.eval()
 
-    test_loss, test_mae = 0, 0
+    test_loss = 0
+    test_mae = 0
     unnormalized_loss = 0
     with torch.no_grad():
+        # Get the dataset mean and std from the get_qm9.py file
+        '''
+        mean, std = get_qm9_statistics('.data/qm9')
+        mean, std = mean[:, LABEL_INDEX], std[:, LABEL_INDEX]
+        '''
         for data in tqdm(test_loader, desc='Testing', ncols=100, leave=False, position=0, unit='batch', unit_scale=test_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
             data = data.to(device)
             target = data.y[:, LABEL_INDEX]
-            out = model(data).squeeze()
+            out = get_forward_function(model, data, Z_ONE_HOT_DIM).squeeze()
+            #loss = criterion(out.squeeze(), target)
             loss = criterion(out, (target - mean) / mad)
             mae = criterion(out * mad + mean, target)
+            #unnormalized_output, unnormalized_target = rescale(out.squeeze(), mean, std), rescale(target, mean, std)
+            #unnormalized_loss += criterion(unnormalized_output, unnormalized_target).item()
+
             test_loss += loss.item()
             test_mae += mae.item()
 
     avg_test_loss = test_loss / len(test_loader)
     print(f'Test Loss: {avg_test_loss}')
+    avg_unnormalized_loss = unnormalized_loss / len(test_loader)
     writer.add_scalar('Test Loss', avg_test_loss)
+    #writer.add_scalar('Rescaled Test Loss', avg_unnormalized_loss)
     writer.add_scalar('Test MAE', test_mae / len(test_loader))
     writer.close()
+    return {'train_loss': train_losses, 'valid_loss': val_losses, 'test_loss': avg_test_loss, 'rescaled_test_loss': avg_unnormalized_loss}
 
 if __name__ == '__main__':
     # Experiment settings
