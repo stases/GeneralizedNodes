@@ -1,0 +1,34 @@
+model_arch: EGNN
+depth: 7
+pool: "add"
+add_residual_skip: True
+layernorm: True
+masking: False
+trainer: qm9
+learning_rate: 0.0005
+epochs: 100
+batch_size: 32
+subgraph: False
+fully_connect: True
+node_features: 11
+Z_ONE_HOT_DIM: 11
+LABEL_INDEX: 7
+EDGE_ATTR_DIM: 4
+edge_features: 0
+hidden_features: 128
+out_features: 1
+data_dir: "./data/qm9"
+model_dir: "./trained/qm9"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda
