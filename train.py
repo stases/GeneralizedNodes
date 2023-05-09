@@ -18,6 +18,7 @@ MODEL_MAP = {
     "net": Net,
     "transformernet": TransformerNet,
     "EGNN": EGNN,
+    "Fractal_EGNN": Fractal_EGNN,
     # Add more models here
 }
 

@@ -193,7 +193,7 @@ if __name__ == '__main__':
     out_features = 1
 
     # Model, optimizer, and loss function
-    model = FractalNet(node_features, edge_features, hidden_features, out_features, depth=4, pool='add', add_residual_skip=False, masking=True).to(device)
+    model = FractalNet(node_features, edge_features, hidden_features, out_features, depth=4, pool='add', residual=False, masking=True).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
     criterion = nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3, verbose=True)

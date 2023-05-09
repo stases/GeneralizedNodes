@@ -314,12 +314,12 @@ class EGNNLayer(tg.nn.MessagePassing):
         # Scale magnitude of displacement vector
         return msg
 
-    def aggregate(self, inputs, index):
+    '''def aggregate(self, inputs, index):
         msgs = inputs
         # Aggregate messages
         msg_aggr = scatter(msgs, index, dim=self.node_dim, reduce=self.aggr)
         # Aggregate displacement vectors
-        return msg_aggr
+        return msg_aggr'''
 
     def update(self, aggr_out, h, pos):
         msg_aggr = aggr_out

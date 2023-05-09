@@ -59,12 +59,12 @@ class TransformerNet(nn.Module):
 
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="add",
-                 add_residual_skip=False, masking=False, layernorm=False, pool_all=False,**kwargs):
+                 residual=False, masking=False, layernorm=False, pool_all=False, **kwargs):
         super().__init__()
         self.name = 'FractalNet'
         self.depth = depth
         self.pool = pool
-        self.add_residual_skip = add_residual_skip
+        self.add_residual_skip = residual
         self.masking = masking
         self.layernorm = layernorm
         self.pool_all = pool_all
@@ -321,5 +321,94 @@ class EGNN(nn.Module):
             # Update node coordinates (no residual) (n, 3) -> (n, 3)
 
 
+        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        return self.pred(out)  # (batch_size, out_features)
+
+class Fractal_EGNN(nn.Module):
+    def __init__(
+            self,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            activation="swish",
+            norm="layer",
+            aggr="sum",
+            pool="add",
+            residual=True,
+            **kwargs
+    ):
+        """E(n) Equivariant GNN model
+
+        Args:
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
+        """
+        super().__init__()
+        # Name of the network
+        self.name = "Fractal_EGNN"
+        self.depth = depth
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.ground_mps = torch.nn.ModuleList()
+        self.ground_to_sub_mps = torch.nn.ModuleList()
+        self.sub_mps = torch.nn.ModuleList()
+        self.sub_to_ground_mps = torch.nn.ModuleList()
+        for layer in range(depth):
+            #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        pos = batch.pos  # (n, 3)
+        for layer_idx in range(self.depth):
+            # Ground node message passing layer
+            h_0 = h
+            h = self.ground_mps[layer_idx](h, pos, batch.edge_index)
+            if self.residual:
+                h = h + h_0
+
+            # Ground to subnode message passing layer
+            h_0 = h
+            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
+            if self.residual:
+                h = h + h_0
+
+            # Subnode message passing layer
+            h_0 = h
+            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+            if self.residual:
+                h = h + h_0
+
+            # Subnode to ground node message passing layer
+            h_0 = h
+            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index)
+            if self.residual:
+                h = h + h_0
+            # Update node features (n, d) -> (n, d)
         out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
