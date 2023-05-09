@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 import sys
 from .get_fw_function import get_forward_function
 from .get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
-from models.gnn.networks import FractalNet, GNN, GNN_no_rel, Net, TransformerNet
+from models.gnn.networks import *
 from utils.transforms import Graph_to_Subgraph, Fully_Connected_Graph
 from utils.tools import compute_mean_mad
 from torch.utils.tensorboard import SummaryWriter
@@ -58,7 +58,6 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
     writer.add_scalar('Total number of parameters:', total_params)
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect)
     mean, mad = compute_mean_mad(train_loader, LABEL_INDEX)
-    clip_value = 1.0
     # Set up scheduler
     if scheduler_name == 'CosineAnnealingLR':
         scheduler.T_max = epochs
@@ -97,7 +96,16 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
             loss.backward()
             train_loss += loss.item()
             train_mae += mae.item()
-            utils.clip_grad_norm_(model.parameters(), clip_value)
+            utils.clip_grad_norm_(model.parameters(), 1.0)
+            # calculate the average gradient of all parameters and print it
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    if torch.isnan(param.grad).any():
+                        print(f'NaN gradient in {name}')
+                    if torch.isinf(param.grad).any():
+                        print(f'Inf gradient in {name}')
+                else:
+                    print(f'None gradient in {name}')
             optimizer.step()
         writer.add_scalar('Training Loss', train_loss / len(train_loader), epoch)
         writer.add_scalar('Training MAE', train_mae / len(train_loader), epoch)

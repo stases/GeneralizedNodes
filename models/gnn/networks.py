@@ -57,7 +57,6 @@ class TransformerNet(nn.Module):
         x = self.output(x)
         return x
 
-
 class FractalNet(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="add",
                  add_residual_skip=False, masking=False, layernorm=False, pool_all=False,**kwargs):
@@ -149,7 +148,6 @@ class FractalNet(nn.Module):
         x = self.output_2(x)
         return x
 
-
 class Net(nn.Module):
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth=1, pool="add", add_residual_skip=False, layernorm=False, **kwargs):
         super().__init__()
@@ -189,248 +187,139 @@ class Net(nn.Module):
         x = self.output_2(x)
         return x
 
-class EGNN(nn.Module):
-    def __init__(self, node_features, hidden_features, out_features, depth, **kwargs):
-        super().__init__()
-        self.name = "EGNN"
-        self.embed = nn.Sequential(nn.Linear(node_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
-        self.layers = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
-        self.pre_readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
-        self.readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, out_features))
-
-    def forward(self, data):
-        x, pos, edge_index, batch_idx = data.x, data.pos, data.edge_index, data.batch
-        x = self.embed(x)
-
-        for layer in self.layers:
-            x = x + layer(x, pos, edge_index)
-
-        x = self.pre_readout(x)
-        x = tg.nn.global_add_pool(x, batch_idx)
-        out = self.readout(x)
-        return out
-
-class Fractal_EGNN(nn.Module):
-    def __init__(self, node_features, hidden_features, out_features, depth, **kwargs):
-        super().__init__()
-        self.name = "Fractal_EGNN"
-        self.embed = nn.Sequential(nn.Linear(node_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
-        self.ground_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
-        self.ground_to_sub_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
-        self.sub_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
-        self.sub_to_ground_mps = nn.ModuleList([EGNNLayer(hidden_features) for _ in range(depth)])
-        self.pre_readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, hidden_features))
-        self.readout = nn.Sequential(nn.Linear(hidden_features, hidden_features), nn.SiLU(), nn.Linear(hidden_features, out_features))
-
-    def forward(self, data):
-        x, pos, edge_index, batch_idx = data.x, data.pos, data.edge_index, data.batch
-        x = self.embed(x)
-
-        for layer in self.layers:
-            x = x + layer(x, pos, edge_index)
-
-        x = self.pre_readout(x)
-        x = tg.nn.global_add_pool(x, batch_idx)
-        out = self.readout(x)
-        return out
-
-class GNN(nn.Module):
-    """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.
-    """
-
+class EGNN_Full(nn.Module):
     def __init__(
             self,
-            n_node_features: int,
-            n_edge_features: int,
-            n_hidden: int,
-            n_output: int,
-            num_convolution_blocks: int,
-    ) -> None:
-        """create the gnn
-        Args:
-            n_node_features: input features on each node
-            n_edge_features: input features on each edge
-            n_hidden: hidden features within the neural architectures (embeddings, nodes after graph convolutions, etc.)
-            n_output: how many output features
-            num_convolution_blocks: how many blocks convolutions should be performed. A block may include multiple convolutions
-
-        TODO:
-        - define a GNN which has the following structure: node embedding -> [ReLU -> RGCNConv -> ReLU -> MFConv] x num_convs -> Add-Pool -> Linear -> ReLU -> Linear
-        - One the data has been pooled, it may be beneficial to apply another MLP on the pooled data before predicing the output.
-        """
-        super().__init__()
-        self.name = 'GNN'
-        layers = []
-        in_channels, out_channels = n_node_features, n_hidden
-
-        self.embed = nn.Linear(n_node_features, n_hidden)
-        for l_idx in range(num_convolution_blocks):
-            layers += [
-                nn.Identity() if l_idx == 0 else nn.ReLU(),
-                geom_nn.RGCNConv(in_channels=n_hidden,
-                                 out_channels=n_hidden,
-                                 num_relations=n_edge_features),
-                nn.ReLU(),
-                geom_nn.MFConv(in_channels=n_hidden,
-                               out_channels=n_hidden,
-                               max_degree=10)
-            ]
-        self.GNN = nn.ModuleList(layers)
-        self.linear_1 = nn.Linear(out_channels, out_channels)
-        self.linear_2 = nn.Linear(out_channels, 1)
-
-    def forward(
-            self,
-            x: torch.Tensor,
-            edge_index: torch.Tensor,
-            edge_attr: torch.Tensor,
-            batch_idx: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Args:
-            x: Input features per node
-            edge_index: List of vertex index pairs representing the edges in the graph (PyTorch geometric notation)
-            edge_attr: edge attributes (pytorch geometric notation)
-            batch_idx: Index of batch element for each node
-        Returns:
-            prediction
-        TODO: implement the forward pass being careful to apply MLPs only where they are allowed!
-        Hint: remember to use global pooling.
-        """
-
-        #######################
-        # PUT YOUR CODE HERE  #
-        #######################
-        x = self.embed(x)
-        for layer in self.GNN:
-            if (isinstance(layer, geom_nn.RGCNConv)):
-                x = layer(x, edge_index, edge_attr)
-
-            elif (isinstance(layer, geom_nn.MessagePassing)):
-                x = layer(x, edge_index)
-
-            else:
-                x = layer(x)
-        x = geom_nn.global_add_pool(x, batch_idx)
-        x = F.relu(self.linear_1(x))
-        out = self.linear_2(x)
-        #######################
-        # END OF YOUR CODE    #
-        #######################
-        return out
-
-    @property
-    def device(self):
-        """
-        Returns the device on which the model is. Can be useful in some situations.
-        """
-        return next(self.parameters()).device
-
-class GNN_no_rel(nn.Module):
-    """implements a graphical neural network in pytorch. In particular, we will use pytorch geometric's nn_conv module so we can apply a neural network to the edges.
-    """
-
-    def __init__(
-            self,
-            n_node_features: int,
-            n_edge_features: int,
-            n_hidden: int,
-            n_output: int,
-            num_convolution_blocks: int,
-            pooling: str,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            activation="relu",
+            norm="layer",
+            aggr="sum",
+            pool="add",
+            residual=True,
             **kwargs
-    ) -> None:
-        """create the gnn
+    ):
+        """E(n) Equivariant GNN model 
 
         Args:
-            n_node_features: input features on each node
-            n_edge_features: input features on each edge
-            n_hidden: hidden features within the neural architectures (embeddings, nodes after graph convolutions, etc.)
-            n_output: how many output features
-            num_convolution_blocks: how many blocks convolutions should be performed. A block may include multiple convolutions
-
-        TODO:
-        - define a GNN which has the following structure: node embedding -> [ReLU -> RGCNConv -> ReLU -> MFConv] x num_convs -> Add-Pool -> Linear -> ReLU -> Linear
-        - One the data has been pooled, it may be beneficial to apply another MLP on the pooled data before predicing the output.
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
         """
-
-        #######################
-        # PUT YOUR CODE HERE  #
-        #######################
         super().__init__()
-        self.name = 'GNN_no_rel'
-        layers = []
-        in_channels, out_channels = n_node_features, n_hidden
+        # Name of the network
+        self.name = "EGNN"
 
-        self.embed = nn.Linear(n_node_features, n_hidden)
-        for l_idx in range(num_convolution_blocks):
-            layers += [
-                nn.Identity() if l_idx == 0 else nn.ReLU(),
-                geom_nn.MFConv(in_channels=n_hidden,
-                               out_channels=n_hidden,
-                               max_degree=10)
-            ]
-        self.GNN = nn.ModuleList(layers)
-        self.linear_1 = nn.Linear(out_channels, out_channels)
-        self.linear_2 = nn.Linear(out_channels, 1)
-        self.pooling = pooling
-        #######################
-        # END OF YOUR CODE    #
-        #######################
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
 
-    def forward(
+        # Stack of GNN layers
+        self.convs = torch.nn.ModuleList()
+        for layer in range(depth):
+            self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        pos = batch.pos  # (n, 3)
+
+        for conv in self.convs:
+            # Message passing layer
+            h_update, pos_update = conv(h, pos, batch.edge_index)
+
+            # Update node features (n, d) -> (n, d)
+            h = h + h_update if self.residual else h_update
+
+            # Update node coordinates (no residual) (n, 3) -> (n, 3)
+            # pos = pos_update
+            pos = pos
+
+        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        return self.pred(out)  # (batch_size, out_features)
+
+class EGNN(nn.Module):
+    def __init__(
             self,
-            x: torch.Tensor,
-            edge_index: torch.Tensor,
-            edge_attr: torch.Tensor,
-            batch_idx: torch.Tensor,
-    ) -> torch.Tensor:
-        """
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            activation="swish",
+            norm="layer",
+            aggr="sum",
+            pool="add",
+            residual=True,
+            **kwargs
+    ):
+        """E(n) Equivariant GNN model
+
         Args:
-            x: Input features per node
-            edge_index: List of vertex index pairs representing the edges in the graph (PyTorch geometric notation)
-            edge_attr: edge attributes (pytorch geometric notation)
-            batch_idx: Index of batch element for each node
-
-        Returns:
-            prediction
-
-        TODO: implement the forward pass being careful to apply MLPs only where they are allowed!
-
-        Hint: remember to use global pooling.
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
         """
+        super().__init__()
+        # Name of the network
+        self.name = "EGNN"
 
-        #######################
-        # PUT YOUR CODE HERE  #
-        #######################
-        x = self.embed(x)
-        edge_index = edge_index.type(torch.int64)
-        for layer in self.GNN:
-            if (isinstance(layer, geom_nn.RGCNConv)):
-                x = layer(x, edge_index, edge_attr)
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
 
-            elif (isinstance(layer, geom_nn.MessagePassing)):
-                x = layer(x, edge_index)
+        # Stack of GNN layers
+        self.convs = torch.nn.ModuleList()
+        for layer in range(depth):
+            self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
 
-            else:
-                x = layer(x)
-        if self.pooling == 'add':
-            x = geom_nn.global_add_pool(x, batch_idx)
-        elif self.pooling == 'mean':
-            x = geom_nn.global_mean_pool(x, batch_idx)
-        elif self.pooling == 'max':
-            x = geom_nn.global_max_pool(x, batch_idx)
-        x = F.relu(self.linear_1(x))
-        out = self.linear_2(x)
-        #######################
-        # END OF YOUR CODE    #
-        #######################
-        return out
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
 
-    @property
-    def device(self):
-        """
-        Returns the device on which the model is. Can be useful in some situations.
-        """
-        return next(self.parameters()).device
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
 
+    def forward(self, batch):
+
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        pos = batch.pos  # (n, 3)
+
+        for conv in self.convs:
+            # Message passing layer
+            h_update= conv(h, pos, batch.edge_index)
+
+            # Update node features (n, d) -> (n, d)
+            h = h + h_update if self.residual else h_update
+
+            # Update node coordinates (no residual) (n, 3) -> (n, 3)
+
+
+        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        return self.pred(out)  # (batch_size, out_features)

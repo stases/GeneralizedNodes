@@ -5,9 +5,9 @@ add_residual_skip: True
 layernorm: True
 masking: False
 trainer: qm9
-learning_rate: 0.0005
-epochs: 100
-batch_size: 32
+learning_rate: 0.0006
+epochs: 300
+batch_size: 128
 subgraph: False
 fully_connect: True
 node_features: 11
