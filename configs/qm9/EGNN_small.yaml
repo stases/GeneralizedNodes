@@ -1,12 +1,12 @@
 model_arch: EGNN
-depth: 4
+depth: 3
 pool: "add"
 add_residual_skip: True
 layernorm: True
 masking: False
 trainer: qm9
 learning_rate: 0.0003
-epochs: 150
+epochs: 100
 batch_size: 128
 subgraph: False
 fully_connect: True

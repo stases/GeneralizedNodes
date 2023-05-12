@@ -1,0 +1,35 @@
+model_arch: EGNN
+depth: 3
+pool: "add"
+add_residual_skip: True
+layernorm: True
+masking: False
+trainer: md17
+learning_rate: 0.0003
+epochs: 100
+batch_size: 128
+subgraph_dict:
+  mode: "Fractal"
+fully_connect: True
+node_features: 9
+Z_ONE_HOT_DIM: 11
+name: "aspirin CCSD"
+EDGE_ATTR_DIM: 4
+edge_features: 0
+hidden_features: 128
+out_features: 1
+data_dir: "./data/md17"
+model_dir: "./trained/md17"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda

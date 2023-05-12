@@ -59,7 +59,6 @@ def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
 
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect)
     mean, mad = compute_mean_mad(train_loader, LABEL_INDEX)
-    # Set up scheduler
 
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         # Training loop

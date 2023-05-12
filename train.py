@@ -10,6 +10,7 @@ import yaml
 
 from models.gnn.networks import *
 from trainers.train_qm9_debug import train_qm9_model
+from trainers.train_md17 import train_md17_model
 
 #####################
 #  Helper functions #
@@ -24,6 +25,7 @@ MODEL_MAP = {
 
 TRAINER_MAP = {
     "qm9": train_qm9_model,
+    "md17": train_md17_model,
     # Add more trainers here
 }
 
