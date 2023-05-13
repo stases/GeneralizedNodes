@@ -20,6 +20,7 @@ class To_OneHot(BaseTransform):
             self.num_classes = data.x.max().item() + 1
         data.x = torch.nn.functional.one_hot(data.x, self.num_classes).squeeze()
         return data
+
 class Rename_MD17_Features(BaseTransform):
     def __init__(self):
         super().__init__()

@@ -21,6 +21,7 @@ class Subgraph:
             self.add_fully_connected_edges()
         self.add_subnode_features()
         self.add_subnode_position()
+        self.add_subnode_forces()
         self.add_node_flags()
         self.add_subnode_edges()
         self.add_node_subnode_edges()
@@ -34,6 +35,7 @@ class Subgraph:
         # We don't want to connect accidentally nodes that are not in the subgraph, and vice-versa
         self.subgraph.edge_index = fully_connect_existing_nodes(edge_index=self.subgraph.edge_index).to(self.device)
         #self.subgraph.subgraph_edge_index = fully_connect_existing_nodes(edge_index=self.subgraph.subgraph_edge_index).to(self.device)
+
     def add_subnode_features(self):
         if self.crop_onehot:
             # take only the self.crop_onehot first features
@@ -60,6 +62,14 @@ class Subgraph:
         # In the case of the transformer, the position has no interpretable meaning so we don't se it.
         elif self.mode == 'transformer':
             pass
+
+    def add_subnode_forces(self):
+        if hasattr(self.subgraph, 'force'):
+            if self.mode == 'fractal':
+                self.subgraph.force = self.subgraph.force.repeat(self.num_nodes+1,1)
+            elif self.mode == 'transformer':
+                pass
+
     def add_node_flags(self):
         if hasattr(self.subgraph, 'x'):
             self.subgraph.ground_node = torch.arange(self.subgraph.x.shape[0]) < self.num_nodes

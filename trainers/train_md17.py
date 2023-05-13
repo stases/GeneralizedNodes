@@ -1,4 +1,5 @@
 import numpy as np
+import torch.optim.lr_scheduler
 from torch_geometric.loader import DataLoader
 from tqdm.auto import tqdm
 import sys
@@ -49,8 +50,8 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
         print("Using subgraph dataset")
 
     best_val_loss = np.inf
-
-    writer = SummaryWriter('logs/' + model_name)
+    # write it in the folder logs/md17/name
+    writer = SummaryWriter(os.path.join('logs', 'md17', name, model_name))
     writer.add_scalar('Total number of parameters:', total_params)
 
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, name, batch_size, subgraph_dict)
@@ -58,6 +59,12 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
     raw_forces  = np.concatenate([data.force.numpy() for data in train_loader.dataset])
     shift = np.mean(raw_energies)
     scale = np.sqrt(np.mean(raw_forces **2))
+
+    # Make directories in case they don't exist
+    directory = os.path.join('trained', 'md17', name)
+    # Create the directory if it doesn't exist
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         # Training loop
@@ -67,6 +74,7 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
 
         for data in tqdm(train_loader, desc='Training', ncols=100, leave=False, position=0, unit='batch', unit_scale=train_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
             data = data.to(device)
+            # print all attributes that data has
             data.x = data.x.float()
             data.pos = torch.autograd.Variable(data.pos, requires_grad=True)
             optimizer.zero_grad()
@@ -134,7 +142,7 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
         # Save model if validation loss is lower than previous best
         if valid_loss < best_val_loss:
             best_val_loss = valid_loss
-            torch.save(model.state_dict(), f'trained/md17/{model_name}.pt')
+            torch.save(model.state_dict(), f'trained/md17/{name}/{model_name}.pt')
 
         if scheduler is not None:
             if scheduler_name == 'ReduceLROnPlateau':
@@ -146,7 +154,7 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
         print(f'Epoch: {epoch}, Loss: {training_loss / len(train_loader)}, Valid Loss: {valid_loss / len(valid_loader)}', end='\r')
 
     # Test evaluation
-    model.load_state_dict(torch.load(f'trained/md17/{model_name}.pt'))
+    model.load_state_dict(torch.load(f'trained/md17/{name}/{model_name}.pt'))
     model.eval()
 
     test_mae_energy, test_mae_force = 0, 0
@@ -199,8 +207,8 @@ if __name__ == '__main__':
     # Model, optimizer, and loss function
     model = FractalNet(node_features, edge_features, hidden_features, out_features, depth=4, pool='add', residual=False, masking=True).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0003)
-    criterion = nn.MSELoss()
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.7, patience=3, verbose=True)
+    criterion = nn.L1Loss()
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.00001)
 
     # Data preparation
     train, valid, test = get_qm9("./data/qm9", device=device, LABEL_INDEX=LABEL_INDEX, transform=Graph_to_Subgraph())

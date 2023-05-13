@@ -40,6 +40,7 @@ def get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_conn
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
     return train_loader, valid_loader, test_loader
+
 def train_qm9_model(model, model_name, data_dir, subgraph, fully_connect,
                     epochs, batch_size, optimizer, criterion,
                     scheduler, scheduler_name, device,

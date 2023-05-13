@@ -67,9 +67,10 @@ with open(config_file, "r") as f:
 #  Config parsing    #
 trainer_name = config.get("trainer", "qm9")
 model_arch = config.get("model_arch", "gnn")
-subgraph = config.get("subgraph", False)
+subgraph_dict = config.get("subgraph", {})
 learning_rate = config.get("learning_rate", 0.001)
 batch_size = config.get("batch_size", 32)
+epochs = config.get("epochs", 10)
 data_dir = config.get("data_dir", "default_data_dir")
 model_dir = config.get("model_dir", "default_model_dir")
 log_dir = config.get("log_dir", "default_log_dir")
@@ -153,6 +154,8 @@ print(f"Using {criterion_name} criterion with kwargs: {criterion_kwargs}")
 scheduler_dict = config.get("scheduler", {})
 scheduler_name = scheduler_dict.get("name", "ReduceLROnPlateau")
 scheduler_kwargs = scheduler_dict.get("kwargs", {})
+if "T_max" in scheduler_kwargs:
+    scheduler_kwargs["T_max"] = int(epochs)
 
 scheduler_class = SCHEDULER_MAP.get(scheduler_name, None)
 if scheduler_class is None:
