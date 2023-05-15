@@ -59,6 +59,7 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
     raw_forces  = np.concatenate([data.force.numpy() for data in train_loader.dataset])
     shift = np.mean(raw_energies)
     scale = np.sqrt(np.mean(raw_forces **2))
+    print(f"Shift: {shift}, Scale: {scale}")
 
     # Make directories in case they don't exist
     directory = os.path.join('trained', 'md17', name)
@@ -78,18 +79,37 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
             data.x = data.x.float()
             data.pos = torch.autograd.Variable(data.pos, requires_grad=True)
             optimizer.zero_grad()
-
             pred_energy = model(data).squeeze()
-            pred_force = -1.0 * torch.autograd.grad(
-                pred_energy,
-                data.pos,
-                grad_outputs=torch.ones_like(pred_energy),
-                create_graph=True,
-                retain_graph=True
-            )[0]
+
+            if subgraph_dict is not None:
+                #print("is_leaf: ", data.pos[data.ground_node].is_leaf)
+                #print("requires_grad: ", data.pos[data.ground_node].requires_grad)
+                pred_force_all = -1.0 * torch.autograd.grad(
+                    pred_energy,
+                    data.pos,
+                    grad_outputs=torch.ones_like(pred_energy),
+                    create_graph=True,
+                    retain_graph=True
+                )[0]
+                pred_force = pred_force_all[data.ground_node]
+                data.force = data.force[data.ground_node]
+
+            else:
+                pred_force = -1.0 * torch.autograd.grad(
+                    pred_energy,
+                    data.pos,
+                    grad_outputs=torch.ones_like(pred_energy),
+                    create_graph=True,
+                    retain_graph=True
+                )[0]
+            #print the maximuma absolute value of the predicted force
+            print("predicted force: ", torch.abs(pred_force).max())
+            print("predicted force: ", pred_force.mean())
 
             energy_loss = torch.mean((pred_energy - (data.energy-  shift)/scale) ** 2)
             force_loss = torch.mean(torch.sum((pred_force - data.force / scale) ** 2, -1)) / 3.
+            print("energy loss: ", energy_loss)
+            print("force loss: ", force_loss)
             train_loss = energy_loss + force_loss
             training_loss += train_loss.item()
 
@@ -98,11 +118,20 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
 
             train_loss.backward()
 
+            for name, param in model.named_parameters():
+                if param.requires_grad:
+                    print(name, param.grad.mean(), param.grad.max())
+                    # if there is nan in the gradient, then stop
+                    if torch.isnan(param.grad).any():
+                        print("nan in gradient")
+                        sys.exit()
+
             train_mae_energy += mae_energy.item()
             train_mae_force += mae_force.item()
 
             utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+
         writer.add_scalar('Training Energy MAE', train_mae_energy / len(train_loader), epoch)
         writer.add_scalar('Training Force MAE', train_mae_force / len(train_loader), epoch)
         writer.add_scalar('Training Loss', training_loss / len(train_loader), epoch)

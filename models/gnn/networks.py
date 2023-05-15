@@ -382,8 +382,10 @@ class Fractal_EGNN(nn.Module):
         self.residual = residual
 
     def forward(self, batch):
-
+        # print the values of the self.emb_in linear layer
+        #print("self.emb_in is: ", self.emb_in.weight)
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        #print("H is: ", h)
         pos = batch.pos  # (n, 3)
         for layer_idx in range(self.depth):
             # Ground node message passing layer

@@ -92,9 +92,9 @@ if not os.path.exists(log_dir):
 #config["run_id"] = np.random.randint(0, 1000000)
 config["run_id"] = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 config["model_name"] = f"{model_arch}_{config['run_id']}"
-# save the current config to the model directory
+'''# save the current config to the model directory
 with open(f"{model_dir}/{config['model_name']}.yaml", "w") as f:
-    yaml.dump(config, f)
+    yaml.dump(config, f)'''
 # save it in the log directory as well
 with open(f"{log_dir}/{config['model_name']}.yaml", "w") as f:
     yaml.dump(config, f)
