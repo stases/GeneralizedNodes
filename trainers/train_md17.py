@@ -11,18 +11,21 @@ import torch.nn.utils as utils
 import torch_geometric.transforms as T
 from torch_geometric.datasets import MD17
 
-def path_finder(dir, file):
-    parent_dir = dir
-    name = file
-    path = os.path.join(parent_dir, name)
+class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup, max_iters):
+        self.warmup = warmup
+        self.max_num_iters = max_iters
+        super().__init__(optimizer)
 
-    if os.path.exists(path):
-        i = 1
-        while os.path.exists(path + '_' + str(i)):
-            i += 1
-        name = name + '_' + str(i)
-        path = os.path.join(parent_dir, name)
-    return path
+    def get_lr(self):
+        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+        return [base_lr * lr_factor for base_lr in self.base_lrs]
+
+    def get_lr_factor(self, epoch):
+        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
+        if epoch <= self.warmup:
+            lr_factor *= epoch * 1.0 / self.warmup
+        return lr_factor
 
 def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
     transforms = [Rename_MD17_Features(), To_OneHot(), Fully_Connected_Graph()]
@@ -67,6 +70,8 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+    # Manual scheduling
+    #scheduler = CosineWarmupScheduler(optimizer, 50, epochs)
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         # Training loop
         model.train()
@@ -103,13 +108,13 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                     retain_graph=True
                 )[0]
             #print the maximuma absolute value of the predicted force
-            print("predicted force: ", torch.abs(pred_force).max())
-            print("predicted force: ", pred_force.mean())
+            #print("predicted force: ", torch.abs(pred_force).max())
+            #print("predicted force: ", pred_force.mean())
 
             energy_loss = torch.mean((pred_energy - (data.energy-  shift)/scale) ** 2)
             force_loss = torch.mean(torch.sum((pred_force - data.force / scale) ** 2, -1)) / 3.
-            print("energy loss: ", energy_loss)
-            print("force loss: ", force_loss)
+            #print("energy loss: ", energy_loss)
+            #print("force loss: ", force_loss)
             train_loss = energy_loss + force_loss
             training_loss += train_loss.item()
 
@@ -118,13 +123,13 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
 
             train_loss.backward()
 
-            for name, param in model.named_parameters():
+            '''for name, param in model.named_parameters():
                 if param.requires_grad:
                     print(name, param.grad.mean(), param.grad.max())
                     # if there is nan in the gradient, then stop
                     if torch.isnan(param.grad).any():
                         print("nan in gradient")
-                        sys.exit()
+                        sys.exit()'''
 
             train_mae_energy += mae_energy.item()
             train_mae_force += mae_force.item()
@@ -147,13 +152,25 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
             optimizer.zero_grad()
 
             pred_energy = model(data).squeeze()
-            pred_force = -1.0 * torch.autograd.grad(
-                pred_energy,
-                data.pos,
-                grad_outputs=torch.ones_like(pred_energy),
-                create_graph=True,
-                retain_graph=True
-            )[0]
+            if subgraph_dict is not None:
+                pred_force_all = -1.0 * torch.autograd.grad(
+                    pred_energy,
+                    data.pos,
+                    grad_outputs=torch.ones_like(pred_energy),
+                    create_graph=True,
+                    retain_graph=True
+                )[0]
+                pred_force = pred_force_all[data.ground_node]
+                data.force = data.force[data.ground_node]
+
+            else:
+                pred_force = -1.0 * torch.autograd.grad(
+                    pred_energy,
+                    data.pos,
+                    grad_outputs=torch.ones_like(pred_energy),
+                    create_graph=True,
+                    retain_graph=True
+                )[0]
             mae_energy = criterion(pred_energy * scale + shift, data.energy)
             mae_force = criterion(pred_force * scale, data.force)
 
@@ -188,14 +205,26 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
 
     test_mae_energy, test_mae_force = 0, 0
     test_loss = 0
-    with torch.no_grad():
-        for data in tqdm(test_loader, desc='Testing', ncols=100, leave=False, position=0, unit='batch', unit_scale=test_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
-            data = data.to(device)
-            data.x = data.x.float()
-            data.pos = torch.autograd.Variable(data.pos, requires_grad=True)
-            optimizer.zero_grad()
 
-            pred_energy = model(data).squeeze()
+    for data in tqdm(test_loader, desc='Testing', ncols=100, leave=False, position=0, unit='batch', unit_scale=test_loader.batch_size, dynamic_ncols=True, file=sys.stdout):
+        data = data.to(device)
+        data.x = data.x.float()
+        data.pos = torch.autograd.Variable(data.pos, requires_grad=True)
+        optimizer.zero_grad()
+
+        pred_energy = model(data).squeeze()
+        if subgraph_dict is not None:
+            pred_force_all = -1.0 * torch.autograd.grad(
+                pred_energy,
+                data.pos,
+                grad_outputs=torch.ones_like(pred_energy),
+                create_graph=True,
+                retain_graph=True
+            )[0]
+            pred_force = pred_force_all[data.ground_node]
+            data.force = data.force[data.ground_node]
+
+        else:
             pred_force = -1.0 * torch.autograd.grad(
                 pred_energy,
                 data.pos,
@@ -203,16 +232,16 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                 create_graph=True,
                 retain_graph=True
             )[0]
-            mae_energy = criterion(pred_energy * scale + shift, data.energy)
-            mae_force = criterion(pred_force * scale, data.force)
+        mae_energy = criterion(pred_energy * scale + shift, data.energy)
+        mae_force = criterion(pred_force * scale, data.force)
 
-            energy_loss = torch.mean((pred_energy - (data.energy - shift) / scale) ** 2)
-            force_loss = torch.mean(torch.sum((pred_force - data.force / scale) ** 2, -1)) / 3.
-            total_test_loss = energy_loss + force_loss
-            test_loss += total_val_loss.item()
+        energy_loss = torch.mean((pred_energy - (data.energy - shift) / scale) ** 2)
+        force_loss = torch.mean(torch.sum((pred_force - data.force / scale) ** 2, -1)) / 3.
+        total_test_loss = energy_loss + force_loss
+        test_loss += total_val_loss.item()
 
-            test_mae_energy += mae_energy.item()
-            test_mae_force += mae_force.item()
+        test_mae_energy += mae_energy.item()
+        test_mae_force += mae_force.item()
 
     print(f'Test Energy MAE: {test_mae_energy / len(test_loader)}')
     print(f'Test Force MAE: {test_mae_force / len(test_loader)}')

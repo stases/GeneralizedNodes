@@ -6,7 +6,7 @@ layernorm: True
 masking: False
 trainer: md17
 learning_rate: 0.0005
-epochs: 500
+epochs: 150
 batch_size: 8
 subgraph_dict: null
 fully_connect: True

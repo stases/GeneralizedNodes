@@ -1,12 +1,12 @@
 model_arch: Fractal_EGNN
-depth: 1
+depth: 3
 pool: "add"
 add_residual_skip: True
 layernorm: True
 masking: False
 trainer: md17
-learning_rate: 0.00000005
-epochs: 100
+learning_rate: 0.0005
+epochs: 150
 batch_size: 8
 subgraph_dict:
   mode: "fractal"
@@ -16,7 +16,7 @@ Z_ONE_HOT_DIM: 11
 name: "aspirin CCSD"
 EDGE_ATTR_DIM: 4
 edge_features: 0
-hidden_features: 4
+hidden_features: 64
 out_features: 1
 data_dir: "./data/md17"
 model_dir: "./trained/md17"
