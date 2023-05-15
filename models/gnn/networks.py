@@ -313,7 +313,7 @@ class EGNN(nn.Module):
 
         for conv in self.convs:
             # Message passing layer
-            h_update= conv(h, pos, batch.edge_index)
+            h_update = conv(h, pos, batch.edge_index)
 
             # Update node features (n, d) -> (n, d)
             h = h + h_update if self.residual else h_update
@@ -409,6 +409,90 @@ class Fractal_EGNN(nn.Module):
             # Subnode to ground node message passing layer
             h_0 = h
             h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index)
+            if self.residual:
+                h = h + h_0
+            # Update node features (n, d) -> (n, d)
+        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        return self.pred(out)  # (batch_size, out_features)
+
+class Fractal_EGNN_v2(nn.Module):
+    def __init__(
+            self,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            activation="swish",
+            norm="layer",
+            aggr="sum",
+            pool="add",
+            residual=True,
+            **kwargs
+    ):
+        """E(n) Equivariant GNN model
+
+        Args:
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
+        """
+        super().__init__()
+        # Name of the network
+        self.name = "Fractal_EGNN"
+        self.depth = depth
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.ground_mps = torch.nn.ModuleList()
+        self.ground_to_sub_mps = torch.nn.ModuleList()
+        self.sub_mps = torch.nn.ModuleList()
+        self.sub_to_ground_mps = torch.nn.ModuleList()
+        for layer in range(depth):
+            #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+        # print the values of the self.emb_in linear layer
+        #print("self.emb_in is: ", self.emb_in.weight)
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        #print("H is: ", h)
+        pos = batch.pos  # (n, 3)
+        for layer_idx in range(self.depth):
+            # Ground node message passing layer
+            h_0 = h
+            h = self.ground_mps[layer_idx](h, pos, batch.edge_index)
+
+            # Ground to subnode message passing layer
+            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
+
+            # Subnode message passing layer
+            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+
+            # Subnode to ground node message passing layer
+            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index)
+
+            # Adding residual connections at the very end
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)

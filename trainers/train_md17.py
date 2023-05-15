@@ -195,6 +195,8 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                 scheduler.step(valid_loss / len(valid_loader))
             if scheduler_name == "CosineAnnealingLR":
                 scheduler.step()
+            else:
+                scheduler.step()
         # log the learning rate after the scheduler
         writer.add_scalar('Learning Rate', optimizer.param_groups[0]['lr'], epoch)
         print(f'Epoch: {epoch}, Loss: {training_loss / len(train_loader)}, Valid Loss: {valid_loss / len(valid_loader)}', end='\r')
