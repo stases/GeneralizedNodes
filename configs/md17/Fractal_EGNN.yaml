@@ -5,8 +5,8 @@ add_residual_skip: True
 layernorm: True
 masking: False
 trainer: md17
-learning_rate: 0.0005
-epochs: 150
+learning_rate: 0.0003
+epochs: 300
 batch_size: 8
 subgraph_dict:
   mode: "fractal"

@@ -71,7 +71,7 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
         os.makedirs(directory)
 
     # Manual scheduling
-    #scheduler = CosineWarmupScheduler(optimizer, 50, epochs)
+    scheduler = CosineWarmupScheduler(optimizer, 50, epochs)
     for epoch in tqdm(range(epochs), desc='Epochs', ncols=100):
         # Training loop
         model.train()
@@ -238,11 +238,13 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
         energy_loss = torch.mean((pred_energy - (data.energy - shift) / scale) ** 2)
         force_loss = torch.mean(torch.sum((pred_force - data.force / scale) ** 2, -1)) / 3.
         total_test_loss = energy_loss + force_loss
-        test_loss += total_val_loss.item()
+        test_loss += total_test_loss.item()
 
         test_mae_energy += mae_energy.item()
         test_mae_force += mae_force.item()
-
+    writer.add_scalar('Test Energy MAE', test_mae_energy / len(test_loader), epoch)
+    writer.add_scalar('Test Force MAE', test_mae_force / len(test_loader), epoch)
+    writer.add_scalar('Test Loss', test_loss / len(test_loader), epoch)
     print(f'Test Energy MAE: {test_mae_energy / len(test_loader)}')
     print(f'Test Force MAE: {test_mae_force / len(test_loader)}')
     print(f'Test Loss: {test_loss / len(test_loader)}')
