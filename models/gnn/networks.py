@@ -259,12 +259,12 @@ class EGNN_Full(nn.Module):
 class EGNN(nn.Module):
     def __init__(
             self,
-            depth=5,
-            hidden_features=128,
-            node_features=1,
-            out_features=1,
+            depth,
+            hidden_features,
+            node_features,
+            out_features,
+            norm,
             activation="swish",
-            norm="layer",
             aggr="sum",
             pool="add",
             residual=True,

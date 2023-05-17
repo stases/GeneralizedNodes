@@ -170,9 +170,6 @@ class SimpleMP(tg.nn.MessagePassing):
         """Update node"""
         return x if message is None else message
 
-
-
-
 class EGNN_FullLayer(tg.nn.MessagePassing):
     def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add"):
         """E(n) Equivariant GNN Layer
@@ -271,7 +268,9 @@ class EGNNLayer(tg.nn.MessagePassing):
 
         self.emb_dim = emb_dim
         self.activation = {"swish": nn.SiLU(), "relu": nn.ReLU()}[activation]
-        self.norm = {"layer": torch.nn.LayerNorm, "batch": torch.nn.BatchNorm1d}[norm]
+        self.norm = {"layer": torch.nn.LayerNorm,
+                     "batch": torch.nn.BatchNorm1d,
+                     "none": nn.Identity}[norm]
 
         # MLP `\psi_h` for computing messages `m_ij`
         self.mlp_msg = nn.Sequential(
@@ -289,7 +288,7 @@ class EGNNLayer(tg.nn.MessagePassing):
             self.norm(emb_dim),
             self.activation,
             nn.Linear(emb_dim, emb_dim),
-            self.norm(emb_dim),
+            self.norm(emb_dim) if norm != "none" else nn.Identity(),
             self.activation,
         )
 

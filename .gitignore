@@ -5,3 +5,4 @@ __pycache__/
 logs/
 trained/
 downloaded_logs/
+wandb/

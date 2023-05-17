@@ -1,3 +1,8 @@
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchmetrics
 import numpy as np
 import torch.optim.lr_scheduler
 from torch_geometric.loader import DataLoader
@@ -9,25 +14,7 @@ import torch
 import pytorch_lightning as pl
 import wandb
 import torchmetrics
-
-class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, warmup, max_iters):
-        self.warmup = warmup
-        self.max_num_iters = max_iters
-        super().__init__(optimizer)
-
-    def get_lr(self):
-        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
-        return [base_lr * lr_factor for base_lr in self.base_lrs]
-
-    def get_lr_factor(self, epoch):
-        print('self max num iters', self.max_num_iters)
-        print('self warmup', self.warmup)
-        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
-        if epoch <= self.warmup:
-            lr_factor *= epoch * 1.0 / self.warmup
-        lr_factor = 1
-        return lr_factor
+#from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 
 def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
     transforms = [Rename_MD17_Features(), To_OneHot(), Fully_Connected_Graph()]
@@ -35,13 +22,15 @@ def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
         subgraph_mode = subgraph_dict['mode']
         transforms.append(Graph_to_Subgraph(mode=subgraph_mode))
     transform = T.Compose(transforms)
+
     dataset = MD17(root=data_dir, name=name, train=True, transform=transform)
     train, valid = dataset[:950], dataset[950:1000]
-    test = MD17(root=data_dir, name=name, train=False, transform=transform)
+    test = MD17(root='./data/MD17', name=name, train=False, transform=transform)
 
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
+
     return train_loader, valid_loader, test_loader
 
 def get_shift_scale(train_loader):
@@ -55,57 +44,72 @@ def get_shift_scale(train_loader):
     return shift, scale
 
 class MD17Model(pl.LightningModule):
-    def __init__(self, model,data_dir, name, batch_size, subgraph_dict=None, **kwargs):
+    """Graph Neural Network module"""
+
+    def __init__(
+        self,
+        model,
+        data_dir,
+        name="aspirin CCSD",
+        lr=1e-5,
+        weight_decay=0.5,
+        warmup_epochs=10,
+        weight=1,
+        shift=0,
+        scale=1,
+        **kwargs
+    ):
         super().__init__()
         self.model = model
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.warmup_epochs = warmup_epochs
+
+        self.weight = weight
+        self.shift = shift
+        self.scale = scale
         self.data_dir = data_dir
         self.name = name
-        self.subgraph_dict = subgraph_dict
-        self.batch_size = batch_size
-        self.weight = 1.0
-        self.learning_rate = kwargs['learning_rate']
+        self.batch_size = kwargs["batch_size"]
+        self.subgraph_dict = kwargs["subgraph_dict"]
         self.energy_train_metric = torchmetrics.MeanAbsoluteError()
         self.energy_valid_metric = torchmetrics.MeanAbsoluteError()
         self.energy_test_metric = torchmetrics.MeanAbsoluteError()
         self.force_train_metric = torchmetrics.MeanAbsoluteError()
         self.force_valid_metric = torchmetrics.MeanAbsoluteError()
         self.force_test_metric = torchmetrics.MeanAbsoluteError()
-        self.shift, self.scale = get_shift_scale(self.train_dataloader())
-        self.save_hyperparameters(ignore=['criterion', 'model'])
+
     def forward(self, graph):
-        graph = graph.to(self.device)
         graph.x = graph.x.float()
         energy, force = self.pred_energy_and_force(graph)
         return energy, force
 
+    @torch.enable_grad()
     def pred_energy_and_force(self, graph):
         graph.pos = torch.autograd.Variable(graph.pos, requires_grad=True)
         pred_energy = self.model(graph)
         sign = -1.0
         pred_force = (
-                sign
-                * torch.autograd.grad(
-            pred_energy,
-            graph.pos,
-            grad_outputs=torch.ones_like(pred_energy),
-            create_graph=True,
-            retain_graph=True,
-        )[0]
+            sign
+            * torch.autograd.grad(
+                pred_energy,
+                graph.pos,
+                grad_outputs=torch.ones_like(pred_energy),
+                create_graph=True,
+                retain_graph=True,
+            )[0]
         )
-        if self.subgraph_dict is not None:
-            pred_force = pred_force[graph.ground_node]
-            graph.force = graph.force[graph.ground_node]
-
         return pred_energy.squeeze(-1), pred_force
+
     def energy_and_force_loss(self, graph, energy, force):
         loss = F.mse_loss(energy, (graph.energy - self.shift) / self.scale)
         loss += self.weight * F.mse_loss(force, graph.force / self.scale)
         return loss
 
-    def training_step(self, batch, batch_idx):
-        graph = batch.to(self.device)
-        graph.x = graph.x.float()
-        energy, force = self.pred_energy_and_force(graph)
+    def training_step(self, graph):
+        energy, force = self(graph)
+
+        # print("train", energy * self.scale + self.shift - graph.energy)
 
         loss = self.energy_and_force_loss(graph, energy, force)
         self.energy_train_metric(energy * self.scale + self.shift, graph.energy)
@@ -115,10 +119,6 @@ class MD17Model(pl.LightningModule):
         self.log("lr", cur_lr, prog_bar=True, on_step=True)
         return loss
 
-    def on_train_epoch_end(self):
-        self.log("Energy train MAE", self.energy_train_metric, prog_bar=True)
-        self.log("Force train MAE", self.force_train_metric, prog_bar=True)
-
     @torch.inference_mode(False)
     def validation_step(self, graph, batch_idx):
         energy, force = self(graph)
@@ -126,9 +126,6 @@ class MD17Model(pl.LightningModule):
         self.energy_valid_metric(energy * self.scale + self.shift, graph.energy)
         self.force_valid_metric(force * self.scale, graph.force)
 
-    def on_validation_epoch_end(self):
-        self.log("Energy valid MAE", self.energy_valid_metric, prog_bar=True)
-        self.log("Force valid MAE", self.force_valid_metric, prog_bar=True)
 
     @torch.inference_mode(False)
     def test_step(self, graph, batch_idx):
@@ -136,15 +133,6 @@ class MD17Model(pl.LightningModule):
         self.energy_test_metric(energy * self.scale + self.shift, graph.energy)
         self.force_test_metric(force * self.scale, graph.force)
 
-    def on_test_epoch_end(self):
-        self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
-        self.log("Force test MAE", self.force_test_metric, prog_bar=True)
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        warmup_epochs = np.ceil(self.trainer.max_epochs * 0.1)
-        scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
-        return [optimizer], [scheduler]
 
     def train_dataloader(self):
         train_loader, _, _ = get_datasets(self.data_dir, self.device, self.name, self.batch_size, self.subgraph_dict)
@@ -157,3 +145,41 @@ class MD17Model(pl.LightningModule):
     def test_dataloader(self):
         _, _, test_loader = get_datasets(self.data_dir, self.device, self.name, self.batch_size, self.subgraph_dict)
         return test_loader
+
+    def configure_optimizers(self):
+        # optimizer = torch.optim.AdamW(
+        #     self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        # )
+        optimizer = torch.optim.RAdam(
+            self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
+
+        num_steps = self.trainer.estimated_stepping_batches
+        steps_per_epoch = num_steps / self.trainer.max_epochs
+
+        if self.warmup_epochs == 0:
+            self.warmup_epochs = 1 / steps_per_epoch
+
+        # scheduler = LinearWarmupCosineAnnealingLR(
+        #     optimizer,
+        #     warmup_epochs=self.warmup_epochs * steps_per_epoch,
+        #     max_epochs=num_steps,
+        # )
+
+
+        return [optimizer]
+
+    # def configure_optimizers(self):
+    #     optimizer = torch.optim.AdamW(
+    #         self.parameters(), lr=self.lr, weight_decay=self.weight_decay
+    #     )
+    #
+    #     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #         optimizer, self.trainer.max_epochs, verbose=False
+    #     )
+    #     lr_scheduler_config = {
+    #         "scheduler": scheduler,
+    #         "interval": "epoch",
+    #         "frequency": 1,
+    #     }
+    #     return [optimizer], [lr_scheduler_config]

@@ -1,0 +1,65 @@
+program: train.py
+method: bayes
+metric:
+  name: Energy valid MAE
+  goal: minimize
+parameters:
+  learning_rate:
+    min: 0.0001
+    max: 0.001
+  depth:
+    distribution: q_uniform
+    min: 1
+    max: 7
+    q: 1
+  epochs:
+    distribution: constant
+    value: 300
+  norm:
+    distribution: categorical
+    values:
+      - layer
+      - batch
+      - none
+  batch_size:
+    distribution: q_uniform
+    min: 4
+    max: 32
+    q: 4
+
+
+
+model_arch: EGNN
+depth: 7
+pool: "add"
+add_residual_skip: True
+layernorm: True
+masking: False
+trainer: md17
+learning_rate: 0.0003
+epochs: 300
+batch_size: 8
+subgraph_dict: null
+fully_connect: True
+node_features: 9
+Z_ONE_HOT_DIM: 11
+name: "aspirin CCSD"
+EDGE_ATTR_DIM: 4
+edge_features: 0
+hidden_features: 64
+out_features: 1
+data_dir: "./data/md17"
+model_dir: "./trained/md17"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda

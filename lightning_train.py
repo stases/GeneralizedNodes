@@ -8,6 +8,8 @@ import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 import pytorch_lightning as pl
+import wandb
+from pytorch_lightning.loggers import WandbLogger
 
 from models.gnn.networks import *
 from trainers.train_qm9_debug import train_qm9_model
@@ -194,7 +196,10 @@ if trainer_class is None:
 #####################
 #  Training loop    #
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
-trainer = pl.Trainer(max_epochs=epochs, fast_dev_run=True)
+wandb.init()
+wandb.config.update(config)
+wandb_logger = WandbLogger()
+trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger)
 lightning_model = MD17Model(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)
