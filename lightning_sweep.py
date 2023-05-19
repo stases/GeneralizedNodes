@@ -11,7 +11,7 @@ from trainers.train_md17_lightning import MD17Model
 #####################
 #  Training loop    #
 
-sweep_config = {
+egnn_sweep_config = {
     'method': 'bayes',
     'metric': {
       'name': 'Energy valid MAE',
@@ -28,13 +28,20 @@ sweep_config = {
             'max': 7,
         },
         'epochs': {
-            'value': 6
+            'value': 10
         },
         'norm': {
             'values': ['layer', 'batch', 'none']
         },
         'batch_size': {
             'values': [4,8,16,32]
+        },
+        'RFF_dim': {
+            'values': [32,48,64,96,128]
+        },
+        'RFF_sigma': {
+            'min': 1.0,
+            'max': 15.0
         },
         'hidden_features': {
             'values': [32,48,64,96,128]
@@ -53,7 +60,19 @@ sweep_config = {
         },
     }
 }
-sweep_id = wandb.sweep(sweep_config, project="egnn_sweep")
+
+fractal_egnn_sweep_config = {}
+
+SWEEP_TARGET = "egnn" # or "fractal_egnn"
+if SWEEP_TARGET == "egnn":
+    sweep_config = egnn_sweep_config
+    project_name = "egnn_sweep"
+elif SWEEP_TARGET == "fractal_egnn":
+    sweep_config = fractal_egnn_sweep_config
+    project_name = "fractal_egnn_sweep"
+
+sweep_id = wandb.sweep(sweep_config, project=project_name)
+
 def train():
     wandb_logger = WandbLogger()
     with wandb.init() as run:
@@ -61,7 +80,11 @@ def train():
                   'out_features': 1,
                   'data_dir': "./data/md17",
                   'name': "aspirin CCSD"}
-        model = EGNN(**config)
+        if SWEEP_TARGET == "egnn":
+            model = EGNN(**config)
+        elif SWEEP_TARGET == "fractal_egnn":
+            model = Fractal_EGNN(**config)
+
         trainer = pl.Trainer(max_epochs=config['epochs'], logger=wandb_logger, accelerator='gpu', devices=1)
         lightning_model = MD17Model(model, **config)
         trainer.fit(lightning_model)

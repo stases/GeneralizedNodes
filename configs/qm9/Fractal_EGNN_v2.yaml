@@ -1,18 +1,17 @@
-model_arch: EGNN
-depth: 4
+model_arch: Fractal_EGNN_v2
+depth: 3
 pool: "add"
 add_residual_skip: True
-norm: "layer"
+layernorm: True
 masking: False
-trainer: md17
-learning_rate: 0.0005
-epochs: 60
+trainer: qm9
+learning_rate: 0.0004
+epochs: 300
 batch_size: 8
-subgraph_dict: null
-RFF_dim: 128
-RFF_sigma: 5.0
+subgraph_dict:
+  mode: "fractal"
 fully_connect: True
-node_features: 9
+node_features: 11
 Z_ONE_HOT_DIM: 11
 name: "aspirin CCSD"
 EDGE_ATTR_DIM: 4

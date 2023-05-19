@@ -21,12 +21,9 @@ class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
     def get_lr_factor(self, epoch):
-        print('self max num iters', self.max_num_iters)
-        print('self warmup', self.warmup)
         lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
         if epoch <= self.warmup:
             lr_factor *= epoch * 1.0 / self.warmup
-        lr_factor = 1
         return lr_factor
 
 def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
@@ -72,6 +69,7 @@ class MD17Model(pl.LightningModule):
         self.force_test_metric = torchmetrics.MeanAbsoluteError()
         self.shift, self.scale = get_shift_scale(self.train_dataloader())
         self.save_hyperparameters(ignore=['criterion', 'model'])
+
     def forward(self, graph):
         graph = graph.to(self.device)
         graph.x = graph.x.float()
@@ -113,12 +111,13 @@ class MD17Model(pl.LightningModule):
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", cur_lr, prog_bar=True, on_step=True)
+
         return loss
 
     def on_train_epoch_end(self):
         self.log("Energy train MAE", self.energy_train_metric, prog_bar=True)
         self.log("Force train MAE", self.force_train_metric, prog_bar=True)
-
+        print("Current learning rate: ", self.trainer.optimizers[0].param_groups[0]["lr"])
     @torch.inference_mode(False)
     def validation_step(self, graph, batch_idx):
         energy, force = self(graph)

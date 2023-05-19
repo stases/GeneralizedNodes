@@ -1,31 +1,29 @@
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.autograd import gradcheck
 from torch_geometric.loader import DataLoader
 from tqdm.auto import tqdm
 import sys
-from .get_fw_function import get_forward_function
-from .get_qm9 import get_qm9, rescale, get_mean_std, get_qm9_statistics
 from models.gnn.networks import *
 from utils.transforms import Graph_to_Subgraph, Fully_Connected_Graph
 from utils.tools import compute_mean_mad
 from torch.utils.tensorboard import SummaryWriter
 import os
 import torch.nn.utils as utils
+from torch_geometric.datasets import QM9
 
-def path_finder(dir, file):
-    parent_dir = dir
-    name = file
-    path = os.path.join(parent_dir, name)
 
-    if os.path.exists(path):
-        i = 1
-        while os.path.exists(path + '_' + str(i)):
-            i += 1
-        name = name + '_' + str(i)
-        path = os.path.join(parent_dir, name)
-    return path
+def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
+    dataset = QM9(data_dir, transform=transform)
+    dataset.data = dataset.data.to(device)
+
+    len_train = 100_000
+    len_test = 10_000
+
+    train = dataset[:len_train]
+    valid = dataset[len_train + len_test:]
+    test = dataset[len_train : len_train + len_test]
+    assert len(dataset) == len(train) + len(valid) + len(test)
+
+    return train, valid, test
 
 def get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect=False):
     if subgraph:

@@ -2,6 +2,36 @@ import torch
 import torch.nn as nn
 import torch_geometric as tg
 from torch_scatter import scatter_add, scatter
+import torch.nn.functional as F
+import math
+
+class RFF(nn.Module):
+    def __init__(self, in_features, out_features, sigma=1.0):
+        super().__init__()
+        self.sigma = sigma
+        self.in_features = in_features
+        self.out_features = out_features
+
+        if out_features % 2 != 0:
+            self.compensation = 1
+        else:
+            self.compensation = 0
+
+        B = torch.randn(int(out_features / 2) + self.compensation, in_features) * sigma
+        B /= math.sqrt(2)
+        self.register_buffer("B", B)
+
+    def forward(self, x):
+        x = F.linear(x, self.B)
+        x = torch.cat((x.sin(), x.cos()), dim=-1)
+        if self.compensation:
+            x = x[..., :-1]
+        return x
+
+    def extra_repr(self) -> str:
+        return "in_features={}, out_features={}, sigma={}".format(
+            self.in_features, self.out_features, self.sigma
+        )
 
 class FractalMP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
@@ -64,7 +94,6 @@ class FractalMP(tg.nn.MessagePassing):
         update = self.update_net(input)
         return update
 
-
 class MP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
 
@@ -121,7 +150,6 @@ class MP(tg.nn.MessagePassing):
         input = torch.cat((x, message), dim=-1)
         update = self.update_net(input)
         return update
-
 
 class SimpleMP(tg.nn.MessagePassing):
     """Message Passing Neural Network Layer"""
@@ -252,7 +280,7 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
 
 class EGNNLayer(tg.nn.MessagePassing):
-    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add"):
+    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None):
         """E(n) Equivariant GNN Layer
 
         Paper: E(n) Equivariant Graph Neural Networks, Satorras et al.
@@ -271,10 +299,12 @@ class EGNNLayer(tg.nn.MessagePassing):
         self.norm = {"layer": torch.nn.LayerNorm,
                      "batch": torch.nn.BatchNorm1d,
                      "none": nn.Identity}[norm]
+        self.RFF_dim = RFF_dim
+        self.RFF_sigma = RFF_sigma
 
         # MLP `\psi_h` for computing messages `m_ij`
         self.mlp_msg = nn.Sequential(
-            nn.Linear(2 * emb_dim + 1, emb_dim),
+            nn.Linear(2 * emb_dim + 1 if self.RFF_dim is None else 2 * emb_dim + RFF_dim, emb_dim),
             self.norm(emb_dim),
             self.activation,
             nn.Linear(emb_dim, emb_dim),
@@ -291,6 +321,8 @@ class EGNNLayer(tg.nn.MessagePassing):
             self.norm(emb_dim) if norm != "none" else nn.Identity(),
             self.activation,
         )
+        if self.RFF_dim is not None:
+            self.RFF = RFF(1, RFF_dim, RFF_sigma)
 
     def forward(self, h, pos, edge_index):
         """
@@ -308,6 +340,8 @@ class EGNNLayer(tg.nn.MessagePassing):
         # Compute messages
         pos_diff = pos_i - pos_j
         dists = torch.norm(pos_diff, dim=-1).unsqueeze(1)
+        if self.RFF_dim is not None:
+            dists = self.RFF(dists)
         msg = torch.cat([h_i, h_j, dists], dim=-1)
         msg = self.mlp_msg(msg)
         # Scale magnitude of displacement vector
