@@ -5,6 +5,7 @@ def catch_lone_sender(edge_index, num_nodes):
     is_receiver = torch.zeros(num_nodes, dtype=torch.bool)
     is_receiver[receiver] = True
     return is_receiver
+
 def fully_connected_edge_index(num_nodes):
     # Create a tensor with all possible combinations of node indices
     all_edges = torch.combinations(torch.arange(num_nodes), r=2)

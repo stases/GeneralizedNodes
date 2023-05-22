@@ -62,7 +62,7 @@ egnn_sweep_config = {
 }
 
 fractal_egnn_sweep_config = {
-    'method': 'bayes',
+    'method': 'random',
     'metric': {
       'name': 'Force valid MAE',
       'goal': 'minimize'
@@ -81,11 +81,15 @@ fractal_egnn_sweep_config = {
             'values': ['fractal_egnn', 'fractal_egnn_v2']
         },
         'epochs': {
-            'value': 150
+            'value': 1
         },
         'norm': {
             'values': ['layer', 'batch', 'none']
         },
+        'mask': {
+            'values': [True, False]
+        },
+
         'batch_size': {
             'values': [4,8]
         },
@@ -93,8 +97,7 @@ fractal_egnn_sweep_config = {
             'values': [32,48,64,96]
         },
         'RFF_sigma': {
-            'min': 0.1,
-            'max': 15.0
+            'values': [0.1, 1, 4, 8, 15]
         },
         'hidden_features': {
             'values': [32,48,64,96]

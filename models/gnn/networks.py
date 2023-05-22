@@ -340,6 +340,7 @@ class Fractal_EGNN(nn.Module):
             residual=True,
             RFF_dim=None,
             RFF_sigma=None,
+            mask=None,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -359,6 +360,7 @@ class Fractal_EGNN(nn.Module):
         # Name of the network
         self.name = "Fractal_EGNN"
         self.depth = depth
+        self.mask = mask
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -386,33 +388,37 @@ class Fractal_EGNN(nn.Module):
         self.residual = residual
 
     def forward(self, batch):
-        # print the values of the self.emb_in linear layer
-        #print("self.emb_in is: ", self.emb_in.weight)
+        num_nodes = batch.x.shape[0]
+        device = batch.x.device
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
         #print("H is: ", h)
         pos = batch.pos  # (n, 3)
         for layer_idx in range(self.depth):
             # Ground node message passing layer
             h_0 = h
-            h = self.ground_mps[layer_idx](h, pos, batch.edge_index)
+            mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask)
             if self.residual:
                 h = h + h_0
 
             # Ground to subnode message passing layer
             h_0 = h
-            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
+            mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index, mask)
             if self.residual:
                 h = h + h_0
 
             # Subnode message passing layer
             h_0 = h
-            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+            mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index, mask)
             if self.residual:
                 h = h + h_0
 
             # Subnode to ground node message passing layer
             h_0 = h
-            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index)
+            mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index, mask)
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)
@@ -433,6 +439,7 @@ class Fractal_EGNN_v2(nn.Module):
             residual=True,
             RFF_dim=None,
             RFF_sigma=None,
+            mask=None,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -450,8 +457,9 @@ class Fractal_EGNN_v2(nn.Module):
         """
         super().__init__()
         # Name of the network
-        self.name = "Fractal_EGNN"
+        self.name = "Fractal_EGNN_2"
         self.depth = depth
+        self.mask = mask
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -479,24 +487,30 @@ class Fractal_EGNN_v2(nn.Module):
         self.residual = residual
 
     def forward(self, batch):
-        # print the values of the self.emb_in linear layer
-        #print("self.emb_in is: ", self.emb_in.weight)
+        num_nodes = batch.x.shape[0]
+        device = batch.x.device
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
         #print("H is: ", h)
         pos = batch.pos  # (n, 3)
         for layer_idx in range(self.depth):
-            # Ground node message passing layer
+            # Residual connection
             h_0 = h
-            h = self.ground_mps[layer_idx](h, pos, batch.edge_index)
+
+            # Ground node message passing layer
+            mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask=mask)
 
             # Ground to subnode message passing layer
-            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
+            mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index, mask=mask)
 
             # Subnode message passing layer
-            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+            mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index, mask=mask)
 
             # Subnode to ground node message passing layer
-            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index)
+            mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index, mask=mask)
 
             # Adding residual connections at the very end
             if self.residual:

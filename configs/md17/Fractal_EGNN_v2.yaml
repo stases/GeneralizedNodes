@@ -3,7 +3,7 @@ depth: 1
 pool: "add"
 add_residual_skip: True
 norm: "layer"
-masking: False
+mask: True
 trainer: md17
 learning_rate: 0.0003
 RFF_dim: 64

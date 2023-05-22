@@ -5,6 +5,12 @@ import torch_geometric as tg
 import torch.nn.functional as F
 import math
 
+def catch_lone_sender(edge_index, num_nodes):
+    receiver = edge_index[1]
+    is_receiver = torch.zeros(num_nodes, dtype=torch.bool)
+    is_receiver[receiver] = True
+    return is_receiver
+
 class RFF(nn.Module):
     def __init__(self, in_features, out_features, sigma=1.0):
         super().__init__()
@@ -280,7 +286,7 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
 
 class EGNNLayer(tg.nn.MessagePassing):
-    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None):
+    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None):
         """E(n) Equivariant GNN Layer
 
         Paper: E(n) Equivariant Graph Neural Networks, Satorras et al.
@@ -301,6 +307,7 @@ class EGNNLayer(tg.nn.MessagePassing):
                      "none": nn.Identity}[norm]
         self.RFF_dim = RFF_dim
         self.RFF_sigma = RFF_sigma
+        self.mask = mask
         # MLP `\psi_h` for computing messages `m_ij`
         self.mlp_msg = nn.Sequential(
             nn.Linear(2 * emb_dim + 1 if self.RFF_dim is None else 2 * emb_dim + RFF_dim, emb_dim),
@@ -323,16 +330,18 @@ class EGNNLayer(tg.nn.MessagePassing):
         if self.RFF_dim is not None:
             self.RFF = RFF(1, RFF_dim, RFF_sigma)
 
-    def forward(self, h, pos, edge_index):
+    def forward(self, h, pos, edge_index, mask=None):
         """
         Args:
             h: (n, d) - initial node features
             pos: (n, 3) - initial node coordinates
             edge_index: (e, 2) - pairs of edges (i, j)
+            mask: (n, d) - mask for node features
         Returns:
             out: [(n, d),(n,3)] - updated node features
         """
-        out = self.propagate(edge_index, h=h, pos=pos)
+        self.mask = mask
+        out = self.propagate(edge_index, h=h, pos=pos, mask=mask)
         return out
 
     def message(self, h_i, h_j, pos_i, pos_j):
@@ -353,9 +362,11 @@ class EGNNLayer(tg.nn.MessagePassing):
         # Aggregate displacement vectors
         return msg_aggr'''
 
-    def update(self, aggr_out, h, pos):
+    def update(self, aggr_out, h):
         msg_aggr = aggr_out
         upd_out = self.mlp_upd(torch.cat([h, msg_aggr], dim=-1))
+        if self.mask is not None:
+            upd_out = torch.where(self.mask.unsqueeze(-1), upd_out, h)
         return upd_out
 
     def __repr__(self) -> str:
