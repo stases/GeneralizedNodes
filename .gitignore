@@ -8,3 +8,4 @@ downloaded_logs/
 wandb/
 egnn_sweep/
 lightning_logs/
+fractal_egnn_sweep/

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch_geometric as tg
-from torch_scatter import scatter_add, scatter
+#from torch_scatter import scatter_add, scatter
 import torch.nn.functional as F
 import math
 
@@ -301,7 +301,6 @@ class EGNNLayer(tg.nn.MessagePassing):
                      "none": nn.Identity}[norm]
         self.RFF_dim = RFF_dim
         self.RFF_sigma = RFF_sigma
-
         # MLP `\psi_h` for computing messages `m_ij`
         self.mlp_msg = nn.Sequential(
             nn.Linear(2 * emb_dim + 1 if self.RFF_dim is None else 2 * emb_dim + RFF_dim, emb_dim),

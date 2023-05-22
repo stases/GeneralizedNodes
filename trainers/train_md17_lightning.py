@@ -95,9 +95,12 @@ class MD17Model(pl.LightningModule):
             graph.force = graph.force[graph.ground_node]
 
         return pred_energy.squeeze(-1), pred_force
+
     def energy_and_force_loss(self, graph, energy, force):
         loss = F.mse_loss(energy, (graph.energy - self.shift) / self.scale)
+        #print("Energy loss", loss.item())
         loss += self.weight * F.mse_loss(force, graph.force / self.scale)
+        #print("Force loss", loss.item())
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -118,6 +121,7 @@ class MD17Model(pl.LightningModule):
         self.log("Energy train MAE", self.energy_train_metric, prog_bar=True)
         self.log("Force train MAE", self.force_train_metric, prog_bar=True)
         print("Current learning rate: ", self.trainer.optimizers[0].param_groups[0]["lr"])
+
     @torch.inference_mode(False)
     def validation_step(self, graph, batch_idx):
         energy, force = self(graph)
@@ -138,7 +142,9 @@ class MD17Model(pl.LightningModule):
     def on_test_epoch_end(self):
         self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
         self.log("Force test MAE", self.force_test_metric, prog_bar=True)
-
+        # log the number of parameters of the model
+        self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
+        
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         warmup_epochs = np.ceil(self.trainer.max_epochs * 0.1)

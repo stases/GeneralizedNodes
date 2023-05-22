@@ -2,7 +2,6 @@ model_arch: net
 depth: 4
 pool: "add"
 add_residual_skip: True
-layernorm: True
 masking: False
 trainer: qm9
 learning_rate: 0.0003

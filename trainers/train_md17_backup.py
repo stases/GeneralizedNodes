@@ -60,16 +60,13 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
     train_loader, valid_loader, test_loader = get_datasets(data_dir, device, name, batch_size, subgraph_dict)
     raw_energies = np.array([data.energy.item() for data in train_loader.dataset])
     raw_forces  = np.concatenate([data.force.numpy() for data in train_loader.dataset])
-    energy_shift = np.mean(raw_energies)
-    force_shift = np.mean(raw_forces, axis=0)
-    energy_scale = np.sqrt(np.mean((raw_energies - energy_shift) **2))
-    force_scale = np.sqrt(np.mean((raw_forces - force_shift) **2))
-    force_shift = torch.tensor(force_shift, dtype=torch.float32).to(device)
-    #force_scale = np.sqrt(np.mean(raw_forces **2))
-    print(f"Energy shift: {energy_shift}, Energy scale: {energy_scale}")
-    print(f"Force shift: {force_shift}, Force scale: {force_scale}")
-    #print(f"Shift: {shift}, Scale: {scale}")
 
+    #print(f"Shift: {shift}, Scale: {scale}")
+    shift = np.mean(raw_energies)
+    scale = np.sqrt(np.mean(raw_forces **2))
+
+    print(f"Energy shift: {shift}, Energy scale: {scale}")
+    print(f"Force shift: {shift}, Force scale: {scale}")
     # Make directories in case they don't exist
     directory = os.path.join('trained', 'md17', name)
     # Create the directory if it doesn't exist
@@ -114,16 +111,16 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                     retain_graph=True
                 )[0]
 
-            energy_loss = torch.mean((pred_energy - (data.energy-  energy_shift)/energy_scale) ** 2)
-            force_loss = torch.mean(torch.sum((pred_force - (data.force - force_shift)/force_scale) ** 2, -1)) / 3.
-            print("energy_loss: ", energy_loss)
-            print("force_loss: ", force_loss)
+            energy_loss = torch.mean((pred_energy - (data.energy-  shift)/scale) ** 2)
+            force_loss = torch.mean(torch.sum((pred_force - (data.force)/scale) ** 2, -1)) / 3.
+
             train_loss = energy_loss + force_loss
             training_loss += train_loss.item()
 
-            mae_energy = criterion(pred_energy * energy_scale + energy_shift, data.energy)
-            mae_force = criterion(pred_force * force_scale + force_shift, data.force)
-
+            mae_energy = criterion(pred_energy * scale + shift, data.energy)
+            mae_force = criterion(pred_force * scale + shift, data.force)
+            print("energy_loss: ", energy_loss)
+            print("force_loss: ", force_loss)
             train_loss.backward()
 
             '''for name, param in model.named_parameters():
@@ -174,11 +171,11 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                     create_graph=True,
                     retain_graph=True
                 )[0]
-            energy_loss = torch.mean((pred_energy - (data.energy-  energy_shift)/energy_scale) ** 2)
-            force_loss = torch.mean(torch.sum((pred_force - (data.force - force_shift)/force_scale) ** 2, -1)) / 3.
+            energy_loss = torch.mean((pred_energy - (data.energy-  shift)/scale) ** 2)
+            force_loss = torch.mean(torch.sum((pred_force - (data.force - shift)/scale) ** 2, -1)) / 3.
 
-            mae_energy = criterion(pred_energy * energy_scale + energy_shift, data.energy)
-            mae_force = criterion(pred_force * force_scale + force_shift, data.force)
+            mae_energy = criterion(pred_energy * scale + shift, data.energy)
+            mae_force = criterion(pred_force * scale + shift, data.force)
             #mae_energy = criterion(pred_energy * scale + shift, data.energy)
             #mae_force = criterion(pred_force * scale, data.force)
 
@@ -242,11 +239,11 @@ def train_md17_model(model, model_name, data_dir, name, subgraph_dict,
                 create_graph=True,
                 retain_graph=True
             )[0]
-        energy_loss = torch.mean((pred_energy - (data.energy-  energy_shift)/energy_scale) ** 2)
-        force_loss = torch.mean(torch.sum((pred_force - (data.force - force_shift)/force_scale) ** 2, -1)) / 3.
+        energy_loss = torch.mean((pred_energy - (data.energy-  shift)/scale) ** 2)
+        force_loss = torch.mean(torch.sum((pred_force - (data.force - shift)/scale) ** 2, -1)) / 3.
 
-        mae_energy = criterion(pred_energy * energy_scale + energy_shift, data.energy)
-        mae_force = criterion(pred_force * force_scale + force_shift, data.force)
+        mae_energy = criterion(pred_energy * scale + shift, data.energy)
+        mae_force = criterion(pred_force * scale + shift, data.force)
         #mae_energy = criterion(pred_energy * scale + shift, data.energy)
         #mae_force = criterion(pred_force * scale, data.force)
 

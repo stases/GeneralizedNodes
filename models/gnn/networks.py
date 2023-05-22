@@ -338,6 +338,8 @@ class Fractal_EGNN(nn.Module):
             aggr="sum",
             pool="add",
             residual=True,
+            RFF_dim=None,
+            RFF_sigma=None,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -367,10 +369,10 @@ class Fractal_EGNN(nn.Module):
         self.sub_to_ground_mps = torch.nn.ModuleList()
         for layer in range(depth):
             #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
@@ -429,6 +431,8 @@ class Fractal_EGNN_v2(nn.Module):
             aggr="sum",
             pool="add",
             residual=True,
+            RFF_dim=None,
+            RFF_sigma=None,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -458,10 +462,10 @@ class Fractal_EGNN_v2(nn.Module):
         self.sub_to_ground_mps = torch.nn.ModuleList()
         for layer in range(depth):
             #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
-            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]

@@ -199,7 +199,7 @@ print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id
 wandb.init()
 wandb.config.update(config)
 wandb_logger = WandbLogger()
-trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger)
+trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu')
 lightning_model = MD17Model(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)

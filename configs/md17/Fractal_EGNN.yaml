@@ -1,13 +1,15 @@
 model_arch: Fractal_EGNN
-depth: 3
+depth: 1
 pool: "add"
 add_residual_skip: True
-layernorm: True
+norm: "layer"
 masking: False
 trainer: md17
-learning_rate: 0.0003
-epochs: 300
-batch_size: 8
+learning_rate: 0.0004
+RFF_dim: 64
+RFF_sigma: 6.0
+epochs: 700
+batch_size: 4
 subgraph_dict:
   mode: "fractal"
 fully_connect: True
