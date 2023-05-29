@@ -147,7 +147,9 @@ class MD17Model(pl.LightningModule):
         
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        warmup_epochs = np.ceil(self.trainer.max_epochs * 0.1)
+        #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        warmup_epochs = np.ceil(self.trainer.max_epochs * 0.05)
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
         return [optimizer], [scheduler]
 
