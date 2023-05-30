@@ -1,9 +1,6 @@
-import os
 import sys
 from datetime import datetime
 
-import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
@@ -12,9 +9,10 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 from models.gnn.networks import *
-from trainers.train_qm9_debug import train_qm9_model
+from misc.train_qm9_debug import train_qm9_model
 from trainers.train_md17 import train_md17_model
 from trainers.train_md17_lightning import MD17Model
+from trainers.train_qm9_lightning import QM9Model
 
 #####################
 #  Helper functions #
@@ -26,13 +24,13 @@ MODEL_MAP = {
     "Fractal_EGNN": Fractal_EGNN,
     "Fractal_EGNN_v2": Fractal_EGNN_v2,
     "Transformer_EGNN": Transformer_EGNN,
+    "Transformer_EGNN_v2": Transformer_EGNN_v2,
     # Add more models here
 }
 
 TRAINER_MAP = {
-    "qm9": train_qm9_model,
-    "md17": train_md17_model,
-    "md17_lightning": MD17Model,
+    "qm9": QM9Model,
+    "md17": MD17Model,
     # Add more trainers here
 }
 
@@ -95,6 +93,13 @@ if not os.path.exists(log_dir):
 #####################
 
 #####################
+# Trainer loading   #
+trainer_class = TRAINER_MAP.get(trainer_name, None)
+if trainer_class is None:
+    raise ValueError(f"Invalid trainer value: {trainer_name}")
+#####################
+
+#####################
 # Generating run ID #
 #config["run_id"] = np.random.randint(0, 1000000)
 config["run_id"] = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
@@ -120,81 +125,6 @@ model = model.to(device)
 #####################
 
 #####################
-#  Optimizer setup  #
-# Load the optimizer class or function based on the optimizer key
-optimizer_dict = config.get("optimizer", {})
-optimizer_name = optimizer_dict.get("name", "Adam")
-optimizer_kwargs = optimizer_dict.get("kwargs", {})
-if "eps" in optimizer_kwargs:
-    optimizer_kwargs["eps"] = float(optimizer_kwargs["eps"])
-
-optimizer_class = OPTIMIZER_MAP.get(optimizer_name, None)
-if optimizer_class is None:
-    raise ValueError(f"Invalid optimizer value: {optimizer_name}")
-
-# Instantiate the optimizer using kwargs from the YAML configuration file
-optimizer = optimizer_class(model.parameters(), lr=learning_rate, **optimizer_kwargs)
-config["optimizer"] = optimizer
-#####################
-
-#####################
-#  Criterion setup  #
-# Load the criterion class or function based on the criterion key
-criterion_dict = config.get("criterion", {})
-criterion_name = criterion_dict.get("name", "MSELoss")
-criterion_kwargs = criterion_dict.get("kwargs", {})
-
-criterion_class = CRITERION_MAP.get(criterion_name, None)
-if criterion_class is None:
-    raise ValueError(f"Invalid criterion value: {criterion_name}")
-
-# Instantiate the criterion using kwargs from the YAML configuration file
-criterion = criterion_class(**criterion_kwargs)
-config["criterion"] = criterion
-# Print criterion info
-print(f"Using {criterion_name} criterion with kwargs: {criterion_kwargs}")
-#####################
-
-#####################
-#  Scheduler setup  #
-# Load the scheduler class or function based on the scheduler key
-scheduler_dict = config.get("scheduler", {})
-scheduler_name = scheduler_dict.get("name", "ReduceLROnPlateau")
-scheduler_kwargs = scheduler_dict.get("kwargs", {})
-if "T_max" in scheduler_kwargs:
-    scheduler_kwargs["T_max"] = int(epochs)
-
-scheduler_class = SCHEDULER_MAP.get(scheduler_name, None)
-if scheduler_class is None:
-    raise ValueError(f"Invalid scheduler value: {scheduler_name}")
-
-# Instantiate the scheduler using kwargs from the YAML configuration file
-scheduler = scheduler_class(optimizer, **scheduler_kwargs)
-config["scheduler"] = scheduler
-config["scheduler_name"] = scheduler_name
-# Print scheduler info
-print(f"Using {scheduler_name} scheduler with kwargs: {scheduler_kwargs}")
-#####################
-
-#####################
-#  Device setup     #
-# Load the device based on the device key
-device_name = DEVICE_MAP.get(device, None)
-if device_name is None:
-    raise ValueError(f"Invalid device value: {device}")
-# Set the device
-device = torch.device(device_name)
-#####################
-
-#####################
-#  Trainer setup    #
-# Train the model using kwargs from the YAML configuration file
-trainer_class = TRAINER_MAP.get(trainer_name, None)
-if trainer_class is None:
-    raise ValueError(f"Invalid trainer value: {trainer_name}")
-#####################
-
-#####################
 #  Training loop    #
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
 wandb.init()
@@ -202,9 +132,7 @@ wandb.config.update(config)
 wandb_logger = WandbLogger()
 trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0)
 #trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0)
-lightning_model = MD17Model(model, **config)
+lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)
-
-#trainer = traiYYYner_class(model=model, **config)
 #####################

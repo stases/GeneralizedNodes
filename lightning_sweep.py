@@ -3,8 +3,6 @@ import wandb
 from pytorch_lightning.loggers import WandbLogger
 
 from models.gnn.networks import *
-from trainers.train_qm9_debug import train_qm9_model
-from trainers.train_md17 import train_md17_model
 from trainers.train_md17_lightning import MD17Model
 
 

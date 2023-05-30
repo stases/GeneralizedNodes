@@ -1,15 +1,12 @@
-import os
 import sys
 from datetime import datetime
 
-import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
 
 from models.gnn.networks import *
-from trainers.train_qm9_debug import train_qm9_model
+from misc.train_qm9_debug import train_qm9_model
 from trainers.train_md17 import train_md17_model
 
 #####################

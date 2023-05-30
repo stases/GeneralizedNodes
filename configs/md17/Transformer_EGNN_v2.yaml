@@ -1,10 +1,10 @@
-model_arch: Transformer_EGNN
-depth: 4
-num_heads: 4
+model_arch: Transformer_EGNN_v2
+depth: 2
+num_heads: 1
 pool: "add"
 sub_aggr: "mean"
 only_ground: True
-add_residual_skip: True
+residual: False
 norm: "layer"
 mask: True
 trainer: md17
@@ -14,8 +14,8 @@ RFF_sigma: 10
 epochs: 800
 batch_size: 4
 subgraph_dict:
-  mode: "transformer_16"
-node_features: 25
+  mode: "transformer_5"
+node_features: 14
 fully_connect: True
 name: "aspirin CCSD"
 edge_features: 0

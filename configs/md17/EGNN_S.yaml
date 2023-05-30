@@ -2,20 +2,22 @@ model_arch: EGNN
 depth: 2
 pool: "add"
 add_residual_skip: True
-norm: "batch"
+norm: "layer"
 masking: False
-trainer: md17_lightning
+trainer: md17
 learning_rate: 0.0005
-epochs: 30
-batch_size: 32
+epochs: 800
+batch_size: 4
 subgraph_dict: null
+RFF_dim: 96
+RFF_sigma: 10.0
 fully_connect: True
 node_features: 9
 Z_ONE_HOT_DIM: 11
 name: "aspirin CCSD"
 EDGE_ATTR_DIM: 4
 edge_features: 0
-hidden_features: 64
+hidden_features: 48
 out_features: 1
 data_dir: "./data/md17"
 model_dir: "./trained/md17"
