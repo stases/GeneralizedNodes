@@ -59,7 +59,7 @@ class MD17Model(pl.LightningModule):
         self.name = name
         self.subgraph_dict = subgraph_dict
         self.batch_size = batch_size
-        self.weight = 1.0
+        self.weight = 1000.0
         self.learning_rate = kwargs['learning_rate']
         self.energy_train_metric = torchmetrics.MeanAbsoluteError()
         self.energy_valid_metric = torchmetrics.MeanAbsoluteError()

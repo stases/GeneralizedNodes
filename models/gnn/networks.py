@@ -341,6 +341,7 @@ class Fractal_EGNN(nn.Module):
             RFF_dim=None,
             RFF_sigma=None,
             mask=None,
+            only_ground=False,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -361,6 +362,7 @@ class Fractal_EGNN(nn.Module):
         self.name = "Fractal_EGNN"
         self.depth = depth
         self.mask = mask
+        self.only_ground = only_ground
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -422,6 +424,8 @@ class Fractal_EGNN(nn.Module):
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)
+        if self.only_ground:
+            h = h[batch.ground_node]
         out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
 
@@ -440,6 +444,7 @@ class Fractal_EGNN_v2(nn.Module):
             RFF_dim=None,
             RFF_sigma=None,
             mask=None,
+            only_ground=False,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -460,6 +465,7 @@ class Fractal_EGNN_v2(nn.Module):
         self.name = "Fractal_EGNN_2"
         self.depth = depth
         self.mask = mask
+        self.only_ground = only_ground
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -516,5 +522,8 @@ class Fractal_EGNN_v2(nn.Module):
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)
+        if self.only_ground:
+            h = h[batch.ground_node]
+            batch.batch = batch.batch[batch.ground_node]
         out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)

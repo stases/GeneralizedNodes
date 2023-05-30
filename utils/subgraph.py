@@ -27,6 +27,7 @@ class Subgraph:
         self.add_node_subnode_edges()
         self.add_subnode_node_edges()
         self.add_subgraph_batch_index()
+        self.add_subatom_index()
 
         return self.subgraph
 
@@ -119,3 +120,6 @@ class Subgraph:
         elif self.mode == 'transformer':
             self.subgraph.subgraph_batch_index = torch.arange(self.num_nodes).repeat_interleave(self.transformer_size)
 
+    def add_subatom_index(self):
+        if self.mode == 'fractal':
+            self.subgraph.subatom_index = torch.arange(self.num_nodes).repeat(self.num_nodes+1)
