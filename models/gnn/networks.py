@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as geom_nn
-
+from torch_geometric.nn.conv import TransformerConv
 from utils.tools import catch_lone_sender, fully_connected_edge_index
-from ..layers.layers import FractalMP, MP, EGNNLayer
+from ..layers.layers import FractalMP, MP, EGNNLayer, MultiHeadGATLayer
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -439,6 +439,7 @@ class Fractal_EGNN_v2(nn.Module):
             activation="swish",
             norm="layer",
             aggr="sum",
+            sub_aggr="sum",
             pool="add",
             residual=True,
             RFF_dim=None,
@@ -478,8 +479,8 @@ class Fractal_EGNN_v2(nn.Module):
             #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
             self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
             self.ground_to_sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
-            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
-            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.sub_mps.append(EGNNLayer(hidden_features, activation, norm, sub_aggr, RFF_dim, RFF_sigma))
+            self.sub_to_ground_mps.append(EGNNLayer(hidden_features, activation, norm, sub_aggr, RFF_dim, RFF_sigma))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
@@ -517,6 +518,94 @@ class Fractal_EGNN_v2(nn.Module):
             # Subnode to ground node message passing layer
             mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
             h = self.sub_to_ground_mps[layer_idx](h, pos, batch.subnode_node_index, mask=mask)
+
+            # Adding residual connections at the very end
+            if self.residual:
+                h = h + h_0
+            # Update node features (n, d) -> (n, d)
+        if self.only_ground:
+            h = h[batch.ground_node]
+            batch.batch = batch.batch[batch.ground_node]
+        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        return self.pred(out)  # (batch_size, out_features)
+
+
+class Transformer_EGNN(nn.Module):
+    def __init__(
+            self,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            num_heads=1,
+            activation="swish",
+            norm="layer",
+            aggr="sum",
+            sub_aggr="sum",
+            pool="add",
+            residual=True,
+            RFF_dim=None,
+            RFF_sigma=None,
+            mask=None,
+            only_ground=False,
+            **kwargs
+    ):
+        super().__init__()
+        # Name of the network
+        self.name = "Transformer_EGNN"
+        self.depth = depth
+        self.mask = mask
+        self.only_ground = only_ground
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.ground_mps = torch.nn.ModuleList()
+        self.ground_to_sub_mps = torch.nn.ModuleList()
+        self.sub_mps = torch.nn.ModuleList()
+        self.sub_to_ground_mps = torch.nn.ModuleList()
+        for layer in range(depth):
+            #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+            self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+            self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+        num_nodes = batch.x.shape[0]
+        device = batch.x.device
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        pos = batch.pos  # (n, 3)
+        for layer_idx in range(self.depth):
+            # Residual connection
+            h_0 = h
+
+            # Ground node message passing layer
+            mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask=mask)
+
+            # Ground to subnode message passing layer
+            mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_to_sub_mps[layer_idx](h, batch.node_subnode_index)
+
+            # Subnode message passing layer
+            mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_mps[layer_idx](h, batch.subgraph_edge_index)
+
+            # Subnode to ground node message passing layer
+            mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_to_ground_mps[layer_idx](h, batch.subnode_node_index)
 
             # Adding residual connections at the very end
             if self.residual:

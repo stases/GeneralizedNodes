@@ -25,6 +25,7 @@ MODEL_MAP = {
     "EGNN": EGNN,
     "Fractal_EGNN": Fractal_EGNN,
     "Fractal_EGNN_v2": Fractal_EGNN_v2,
+    "Transformer_EGNN": Transformer_EGNN,
     # Add more models here
 }
 
@@ -200,9 +201,10 @@ wandb.init()
 wandb.config.update(config)
 wandb_logger = WandbLogger()
 trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0)
+#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0)
 lightning_model = MD17Model(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)
 
-#trainer = trainer_class(model=model, **config)
+#trainer = traiYYYner_class(model=model, **config)
 #####################

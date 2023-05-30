@@ -1,0 +1,38 @@
+model_arch: Transformer_EGNN
+depth: 2
+num_heads: 2
+pool: "add"
+sub_aggr: "add"
+only_ground: True
+add_residual_skip: True
+norm: "none"
+mask: True
+trainer: md17
+learning_rate: 0.0004
+RFF_dim: 96
+RFF_sigma: 10
+epochs: 800
+batch_size: 4
+subgraph_dict:
+  mode: "transformer_5"
+node_features: 14
+fully_connect: True
+name: "aspirin CCSD"
+edge_features: 0
+hidden_features: 48
+out_features: 1
+data_dir: "./data/md17"
+model_dir: "./trained/md17"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda

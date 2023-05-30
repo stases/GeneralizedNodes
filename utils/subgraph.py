@@ -20,14 +20,14 @@ class Subgraph:
         if self.fully_connect:
             self.add_fully_connected_edges()
         self.add_subnode_features()
-        self.add_subnode_position()
         self.add_subnode_forces()
+        self.add_subatom_index()
+        self.add_subnode_position()
         self.add_node_flags()
         self.add_subnode_edges()
         self.add_node_subnode_edges()
         self.add_subnode_node_edges()
         self.add_subgraph_batch_index()
-        self.add_subatom_index()
 
         return self.subgraph
 
@@ -62,14 +62,20 @@ class Subgraph:
             self.subgraph.pos = self.subgraph.pos.repeat(self.num_nodes+1,1)
         # In the case of the transformer, the position has no interpretable meaning so we don't se it.
         elif self.mode == 'transformer':
-            pass
+            # Fill up subgraph.pos with zero positions so it matches self.total_num_nodes
+            self.subgraph.pos = torch.cat([self.subgraph.pos, torch.zeros(self.total_num_nodes-self.num_nodes, 3).to(self.device)], dim=0)
+            # asser that subgraph pos[0] is equal to total num of nodes
+            assert self.subgraph.pos.shape[0] == self.total_num_nodes
+
 
     def add_subnode_forces(self):
         if hasattr(self.subgraph, 'force'):
             if self.mode == 'fractal':
                 self.subgraph.force = self.subgraph.force.repeat(self.num_nodes+1,1)
             elif self.mode == 'transformer':
-                pass
+                # do same as for positions
+                self.subgraph.force = torch.cat([self.subgraph.force, torch.zeros(self.total_num_nodes-self.num_nodes, 3).to(self.device)], dim=0)
+                assert self.subgraph.force.shape[0] == self.total_num_nodes
 
     def add_node_flags(self):
         if hasattr(self.subgraph, 'x'):

@@ -4,7 +4,8 @@ import torch_geometric as tg
 #from torch_scatter import scatter_add, scatter
 import torch.nn.functional as F
 import math
-
+from torch_geometric.nn.inits import glorot, zeros
+from torch_geometric.utils import softmax
 def catch_lone_sender(edge_index, num_nodes):
     receiver = edge_index[1]
     is_receiver = torch.zeros(num_nodes, dtype=torch.bool)
@@ -285,6 +286,7 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
 
+
 class EGNNLayer(tg.nn.MessagePassing):
     def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None):
         """E(n) Equivariant GNN Layer
@@ -371,3 +373,141 @@ class EGNNLayer(tg.nn.MessagePassing):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
+
+class AbstractEGNNLayer(tg.nn.MessagePassing):
+    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add",  mask=None):
+        """E(n) Equivariant GNN Layer
+
+        Paper: E(n) Equivariant Graph Neural Networks, Satorras et al.
+
+        Args:
+            emb_dim: (int) - hidden dimension `d`
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+        """
+        # Set the aggregation function
+        super().__init__(aggr=aggr)
+
+        self.emb_dim = emb_dim
+        self.activation = {"swish": nn.SiLU(), "relu": nn.ReLU()}[activation]
+        self.norm = {"layer": torch.nn.LayerNorm,
+                     "batch": torch.nn.BatchNorm1d,
+                     "none": nn.Identity}[norm]
+        self.mask = mask
+        # MLP `\psi_h` for computing messages `m_ij`
+        self.mlp_msg = nn.Sequential(
+            nn.Linear(2 * emb_dim , emb_dim),
+            self.norm(emb_dim),
+            self.activation,
+            nn.Linear(emb_dim, emb_dim),
+            self.norm(emb_dim),
+            self.activation,
+        )
+
+        # MLP `\phi` for computing updated node features `h_i^{l+1}`
+        self.mlp_upd = nn.Sequential(
+            nn.Linear(2 * emb_dim, emb_dim),
+            self.norm(emb_dim),
+            self.activation,
+            nn.Linear(emb_dim, emb_dim),
+            self.norm(emb_dim) if norm != "none" else nn.Identity(),
+            self.activation,
+        )
+    def forward(self, h, pos, edge_index, mask=None):
+        """
+        Args:
+            h: (n, d) - initial node features
+            pos: (n, 3) - initial node coordinates
+            edge_index: (e, 2) - pairs of edges (i, j)
+            mask: (n, d) - mask for node features
+        Returns:
+            out: [(n, d),(n,3)] - updated node features
+        """
+        self.mask = mask
+        out = self.propagate(edge_index, h=h, pos=pos, mask=mask)
+        return out
+
+    def message(self, h_i, h_j, pos_i, pos_j):
+        # Compute messages
+        msg = torch.cat([h_i, h_j], dim=-1)
+        msg = self.mlp_msg(msg)
+        # Scale magnitude of displacement vector
+        return msg
+
+    '''def aggregate(self, inputs, index):
+        msgs = inputs
+        # Aggregate messages
+        msg_aggr = scatter(msgs, index, dim=self.node_dim, reduce=self.aggr)
+        # Aggregate displacement vectors
+        return msg_aggr'''
+
+    def update(self, aggr_out, h):
+        msg_aggr = aggr_out
+        upd_out = self.mlp_upd(torch.cat([h, msg_aggr], dim=-1))
+        if self.mask is not None:
+            upd_out = torch.where(self.mask.unsqueeze(-1), upd_out, h)
+        return upd_out
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
+
+
+
+class MultiHeadGATLayer(tg.nn.MessagePassing):
+    def __init__(self, emb_dim, num_heads=1, activation="relu", norm="layer", aggr="add", mask=None):
+        super().__init__(aggr=aggr)
+        self.emb_dim = emb_dim
+        self.num_heads = num_heads
+        self.activation = {"swish": nn.SiLU(), "relu": nn.ReLU()}[activation]
+        self.norm = {"layer": torch.nn.LayerNorm,
+                     "batch": torch.nn.BatchNorm1d,
+                     "none": nn.Identity}[norm]
+        self.mask = mask
+
+        # Multi-head attention
+        self.lin_l = nn.Linear(emb_dim, num_heads * emb_dim, bias=False)
+        self.lin_r = nn.Linear(emb_dim, num_heads * emb_dim, bias=False)
+        self.att_l = nn.Parameter(torch.Tensor(1, num_heads, emb_dim))
+        self.att_r = nn.Parameter(torch.Tensor(1, num_heads, emb_dim))
+
+        # Output layer
+        self.lin_o = nn.Linear(emb_dim * num_heads, emb_dim)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        glorot(self.lin_l.weight)
+        glorot(self.lin_r.weight)
+        glorot(self.att_l)
+        glorot(self.att_r)
+
+    def forward(self, h, edge_index, mask=None):
+        self.mask = mask
+
+        h_l = self.lin_l(h).view(-1, self.num_heads, self.emb_dim)
+        h_r = self.lin_r(h).view(-1, self.num_heads, self.emb_dim)
+
+        return self.propagate(edge_index, h_l=h_l, h_r=h_r, mask=mask)
+
+    def message(self, h_l_i, h_l_j, h_r_i, h_r_j, index):
+        alpha_l = (h_l_j * self.att_l).sum(dim=-1)
+        alpha_r = (h_r_i * self.att_r).sum(dim=-1)
+
+        alpha = alpha_r + alpha_l
+        alpha = F.leaky_relu(alpha, 0.2)
+        alpha = softmax(alpha, index, num_nodes=h_l_i.size(1))
+
+        return alpha.view(-1, self.num_heads, 1) * h_r_j
+
+    def update(self, aggr_out, h):
+        msg_aggr = aggr_out
+        upd_out = self.lin_o(msg_aggr)
+        if self.mask is not None:
+            upd_out = torch.where(self.mask.unsqueeze(-1), upd_out, h)
+        return upd_out
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, num_heads={self.num_heads}, aggr={self.aggr})"
+
+
