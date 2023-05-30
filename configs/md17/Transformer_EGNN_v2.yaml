@@ -1,6 +1,7 @@
 model_arch: Transformer_EGNN_v2
 depth: 2
-num_heads: 1
+num_heads: 2
+num_ascend_heads: 1
 pool: "add"
 sub_aggr: "mean"
 only_ground: True

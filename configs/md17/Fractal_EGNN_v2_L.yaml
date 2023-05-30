@@ -3,10 +3,10 @@ depth: 4
 pool: "add"
 only_ground: True
 add_residual_skip: True
-norm: "none"
+norm: "layer"
 mask: True
 trainer: md17
-learning_rate: 0.0004
+learning_rate: 0.0009
 RFF_dim: 96
 RFF_sigma: 10
 epochs: 900

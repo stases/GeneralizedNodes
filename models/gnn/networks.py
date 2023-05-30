@@ -528,6 +528,7 @@ class Fractal_EGNN_v2(nn.Module):
             batch.batch = batch.batch[batch.ground_node]
         out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
+
 class Transformer_EGNN(nn.Module):
     def __init__(
             self,
@@ -623,6 +624,7 @@ class Transformer_EGNN_v2(nn.Module):
             node_features=1,
             out_features=1,
             num_heads=1,
+            num_ascend_heads=4,
             activation="swish",
             norm="layer",
             aggr="sum",
@@ -637,7 +639,7 @@ class Transformer_EGNN_v2(nn.Module):
     ):
         super().__init__()
         # Name of the network
-        self.name = "Transformer_EGNN"
+        self.name = "Transformer_EGNN_v2"
         self.depth = depth
         self.mask = mask
         self.only_ground = only_ground
@@ -654,14 +656,14 @@ class Transformer_EGNN_v2(nn.Module):
             self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
             self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
             self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
-            self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+        self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
 
         # Predictor MLP
         self.pred = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(hidden_features*num_ascend_heads, hidden_features),
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -675,16 +677,46 @@ class Transformer_EGNN_v2(nn.Module):
         for layer_idx in range(self.depth):
             # Residual connection
             h_0 = h
-
+            h_before = h[batch.ground_node]
             # Ground node message passing layer
             mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
             h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask=mask)
+            h_after_EGNN = h[batch.ground_node]
+            h_after = h[batch.ground_node]
+            # check if they are equal
+            #print(torch.all(torch.eq(h_before, h_after)))
 
+            # Ground to subnode message passing layer
+            h_before = h[batch.ground_node]
+            mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
+            h = self.ground_to_sub_mps[layer_idx](h, batch.node_subnode_index)
+            h[batch.ground_node] = h_before
+            h_after = h[batch.ground_node]
+            # check if they are equal
+            #print(torch.all(torch.eq(h_before, h_after)))
+
+            # Subnode message passing layer
+            h_before = h[batch.ground_node]
+            mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
+            h = self.sub_mps[layer_idx](h, batch.subgraph_edge_index)
+            h[batch.ground_node] = h_before
+            h_after = h[batch.ground_node]
+            # check if they are equal
+            #print(torch.all(torch.eq(h_before, h_after)))
+
+            # Subnode to ground node message passing layer
+
+
+            # Adding residual connections at the very end
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)
+        #mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
+        #h = self.sub_to_ground_mps[0](h, batch.subnode_node_index)
         if self.only_ground:
             h = h[batch.ground_node]
             batch.batch = batch.batch[batch.ground_node]
+        # check if h_after_EGNN and h are equal
+        #print(torch.all(torch.eq(h_after_EGNN, h)))
         out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
