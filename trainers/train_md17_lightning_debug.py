@@ -91,26 +91,116 @@ class MD17Model(pl.LightningModule):
         )[0]
         )
         if self.subgraph_dict is not None:
+
+            pred_force = pred_force[graph.ground_node]
+            graph.force = graph.force[graph.ground_node]
+
+        return pred_energy.squeeze(-1), pred_force
+    ########################################
+    def forward_2(self, graph):
+        graph = graph.to(self.device)
+        graph.x = graph.x.float()
+        energy, force = self.pred_energy_and_force_2(graph)
+        return energy, force
+
+    def pred_energy_and_force_2(self, graph):
+        graph.pos = torch.autograd.Variable(graph.pos, requires_grad=True)
+        pred_energy = self.model._forward(graph)
+        sign = -1.0
+        pred_force = (
+                sign
+                * torch.autograd.grad(
+            pred_energy,
+            graph.pos,
+            grad_outputs=torch.ones_like(pred_energy),
+            create_graph=True,
+            retain_graph=True,
+        )[0]
+        )
+        if self.subgraph_dict is not None:
             pred_force = pred_force[graph.ground_node]
             graph.force = graph.force[graph.ground_node]
 
         return pred_energy.squeeze(-1), pred_force
 
+    def pred_energy_and_force_3(self, graph):
+        graph.pos = torch.autograd.Variable(graph.pos, requires_grad=True)
+        pred_energy = self.model._forward(graph)
+        sign = -1.0
+        pred_force = (
+                sign
+                * torch.autograd.grad(
+            pred_energy,
+            graph.pos,
+            grad_outputs=torch.ones_like(pred_energy),
+            create_graph=True,
+            retain_graph=True,
+        )[0]
+        )
+        if self.subgraph_dict is not None:
+            pred_force = pred_force[graph.ground_node]
+            graph.force = graph.force
+
+        return pred_energy.squeeze(-1), pred_force
+    def pred_energy_only(self, graph):
+        pred_energy = self.model(graph)
+        return pred_energy.squeeze(-1)
+    def pred_energy_only_2(self, graph):
+        pred_energy = self.model._forward(graph)
+        return pred_energy.squeeze(-1)
+############################################
     def energy_and_force_loss(self, graph, energy, force):
         loss = F.mse_loss(energy, (graph.energy - self.shift) / self.scale)
         #print("Energy loss", loss.item())
-        loss += self.weight * F.mse_loss(force, graph.force / self.scale)
+        #loss += self.weight * F.mse_loss(force, graph.force / self.scale)
         #print("Force loss", loss.item())
         return loss
 
     def training_step(self, batch, batch_idx):
+        batch_clone = batch.clone()
+        force = None
         graph = batch.to(self.device)
         graph.x = graph.x.float()
-        energy, force = self.pred_energy_and_force(graph)
 
+        graph_2 = batch_clone.to(self.device)
+        graph_2.x = graph_2.x.float()
+        #####
+        self.model.zero_grad()
+        energy = self.pred_energy_only(graph)
+        energy_1 = energy.clone()
+        loss1 = self.energy_and_force_loss(graph, energy, force)
+        loss1.backward()
+        gradients_forward_1 = {}
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                if param.requires_grad and param.grad is not None:
+                    gradients_forward_1[name] = param.grad.clone()
+        self.model.zero_grad()
+        energy = self.pred_energy_only_2(graph_2)
+        energy_2 = energy.clone()
+        loss2 = self.energy_and_force_loss(graph_2, energy, force)
+        loss2.backward()
+        gradients_forward_2 = {}
+        # check if energies are the same
+        print("Energy difference", torch.mean(torch.abs(energy_1 - energy_2))  )
+        print("Value of energy 1", torch.mean(torch.abs(energy_1)))
+        print("Value of energy 2", torch.mean(torch.abs(energy_2)))
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                if param.requires_grad and param.grad is not None:
+                    gradients_forward_2[name] = param.grad.clone()
+        for name, gradient in gradients_forward_1.items():
+            if name in gradients_forward_2:
+                difference = torch.mean(torch.abs(gradient - gradients_forward_2[name]))
+                if difference > 1e-5:
+                    print(f"Gradient difference for {name} : {difference}")
+
+        energy = self.pred_energy_only(graph)
+        self.model.zero_grad()
         loss = self.energy_and_force_loss(graph, energy, force)
+        ####
         self.energy_train_metric(energy * self.scale + self.shift, graph.energy)
-        self.force_train_metric(force * self.scale, graph.force)
+        #self.force_train_metric(force * self.scale, graph.force)
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", cur_lr, prog_bar=True, on_step=True)
@@ -122,7 +212,7 @@ class MD17Model(pl.LightningModule):
         self.log("Force train MAE", self.force_train_metric, prog_bar=True)
         print("Current learning rate: ", self.trainer.optimizers[0].param_groups[0]["lr"])
 
-    @torch.inference_mode(False)
+    '''@torch.inference_mode(False)
     def validation_step(self, graph, batch_idx):
         energy, force = self(graph)
         # print("valid", energy * self.scale + self.shift - graph.energy)
@@ -143,12 +233,12 @@ class MD17Model(pl.LightningModule):
         self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
         self.log("Force test MAE", self.force_test_metric, prog_bar=True)
         # log the number of parameters of the model
-        self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
-        
+        self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)'''
+
     def configure_optimizers(self):
-        #optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         warmup_epochs = np.ceil(self.trainer.max_epochs * 0.05)
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
         return [optimizer], [scheduler]

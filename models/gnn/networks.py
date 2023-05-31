@@ -620,6 +620,7 @@ class Transformer_EGNN_v2(nn.Module):
     def __init__(
             self,
             depth=5,
+            ascend_depth=1,
             hidden_features=128,
             node_features=1,
             out_features=1,
@@ -641,6 +642,7 @@ class Transformer_EGNN_v2(nn.Module):
         # Name of the network
         self.name = "Transformer_EGNN_v2"
         self.depth = depth
+        self.ascend_depth = ascend_depth
         self.mask = mask
         self.only_ground = only_ground
         # Embedding lookup for initial node features
@@ -652,18 +654,18 @@ class Transformer_EGNN_v2(nn.Module):
         self.sub_mps = torch.nn.ModuleList()
         self.sub_to_ground_mps = torch.nn.ModuleList()
         for layer in range(depth):
-            #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
             self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
             self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
             self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
-        self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads))
+        for layer in range(ascend_depth):
+            self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads, concat=False))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
 
         # Predictor MLP
         self.pred = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features*num_ascend_heads, hidden_features),
+            torch.nn.Linear(hidden_features*1, hidden_features),
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -681,42 +683,36 @@ class Transformer_EGNN_v2(nn.Module):
             # Ground node message passing layer
             mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
             h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask=mask)
-            h_after_EGNN = h[batch.ground_node]
-            h_after = h[batch.ground_node]
-            # check if they are equal
-            #print(torch.all(torch.eq(h_before, h_after)))
+            #h_after_EGNN = h[batch.ground_node]
+
 
             # Ground to subnode message passing layer
-            h_before = h[batch.ground_node]
+            h_old = h.clone()
             mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
             h = self.ground_to_sub_mps[layer_idx](h, batch.node_subnode_index)
-            h[batch.ground_node] = h_before
-            h_after = h[batch.ground_node]
-            # check if they are equal
-            #print(torch.all(torch.eq(h_before, h_after)))
+            h[batch.ground_node] = h_old[batch.ground_node]
+
 
             # Subnode message passing layer
-            h_before = h[batch.ground_node]
+            h_old = h.clone()
             mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
             h = self.sub_mps[layer_idx](h, batch.subgraph_edge_index)
-            h[batch.ground_node] = h_before
-            h_after = h[batch.ground_node]
-            # check if they are equal
-            #print(torch.all(torch.eq(h_before, h_after)))
-
-            # Subnode to ground node message passing layer
-
+            h[batch.ground_node] = h_old[batch.ground_node]
 
             # Adding residual connections at the very end
             if self.residual:
                 h = h + h_0
             # Update node features (n, d) -> (n, d)
-        #mask = catch_lone_sender(batch.subnode_node_index, num_nodes).to(device) if self.mask else None
-        #h = self.sub_to_ground_mps[0](h, batch.subnode_node_index)
+        for layer_idx in range(self.ascend_depth):
+            h_0 = h
+            h = self.sub_to_ground_mps[layer_idx](h, batch.subnode_node_index)
+            if self.residual:
+                h = h + h_0
+                
         if self.only_ground:
-            h = h[batch.ground_node]
-            batch.batch = batch.batch[batch.ground_node]
-        # check if h_after_EGNN and h are equal
-        #print(torch.all(torch.eq(h_after_EGNN, h)))
-        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+            out = self.pool(h[batch.ground_node], batch.batch[batch.ground_node])
+        else:
+            out = self.pool(h, batch.batch)
+        # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
+
