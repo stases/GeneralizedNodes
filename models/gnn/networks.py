@@ -653,13 +653,14 @@ class Transformer_EGNN_v2(nn.Module):
         self.ground_to_sub_mps = torch.nn.ModuleList()
         self.sub_mps = torch.nn.ModuleList()
         self.sub_to_ground_mps = torch.nn.ModuleList()
+        self.ascend_normalization = torch.nn.ModuleList()
         for layer in range(depth):
             self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
             self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
             self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
         for layer in range(ascend_depth):
             self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads, concat=False))
-
+            self.ascend_normalization.append(nn.LayerNorm(hidden_features)) if norm == "layer" else nn.Identity()
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
 
@@ -706,6 +707,7 @@ class Transformer_EGNN_v2(nn.Module):
         for layer_idx in range(self.ascend_depth):
             h_0 = h
             h = self.sub_to_ground_mps[layer_idx](h, batch.subnode_node_index)
+            h = self.ascend_normalization[layer_idx](h)
             if self.residual:
                 h = h + h_0
                 

@@ -52,22 +52,29 @@ def get_shift_scale(train_loader):
     return shift, scale
 
 class MD17Model(pl.LightningModule):
-    def __init__(self, model,data_dir, name, batch_size, subgraph_dict=None, **kwargs):
+    def __init__(self, model,data_dir, name, batch_size, warmup_epochs, subgraph_dict=None, **kwargs):
         super().__init__()
         self.model = model
         self.data_dir = data_dir
         self.name = name
         self.subgraph_dict = subgraph_dict
+        self.warmup_epochs = warmup_epochs
         self.batch_size = batch_size
         self.weight = 1000.0
+        self.repeats = 20
         self.learning_rate = kwargs['learning_rate']
+
         self.energy_train_metric = torchmetrics.MeanAbsoluteError()
         self.energy_valid_metric = torchmetrics.MeanAbsoluteError()
-        self.energy_test_metric = torchmetrics.MeanAbsoluteError()
+
         self.force_train_metric = torchmetrics.MeanAbsoluteError()
         self.force_valid_metric = torchmetrics.MeanAbsoluteError()
+
+        self.energy_test_metric = torchmetrics.MeanAbsoluteError()
         self.force_test_metric = torchmetrics.MeanAbsoluteError()
+
         self.shift, self.scale = get_shift_scale(self.train_dataloader())
+
         self.save_hyperparameters(ignore=['criterion', 'model'])
 
     def forward(self, graph):
@@ -91,8 +98,13 @@ class MD17Model(pl.LightningModule):
         )[0]
         )
         if self.subgraph_dict is not None:
+            if not getattr(graph, 'already_cropped', False):
+                # crop the graph force only once
+                graph.force = graph.force[graph.ground_node]
+                setattr(graph, 'already_cropped', True)
+
+            # crop the pred_force every time
             pred_force = pred_force[graph.ground_node]
-            graph.force = graph.force[graph.ground_node]
 
         return pred_energy.squeeze(-1), pred_force
 
@@ -135,9 +147,28 @@ class MD17Model(pl.LightningModule):
 
     @torch.inference_mode(False)
     def test_step(self, graph, batch_idx):
-        energy, force = self(graph)
-        self.energy_test_metric(energy * self.scale + self.shift, graph.energy)
-        self.force_test_metric(force * self.scale, graph.force)
+        pred_energy_sum = 0
+        pred_force_sum = 0
+        pred_energy_sq_sum = 0
+        pred_force_sq_sum = 0
+        for r in range(self.repeats):
+            pred_energy, pred_force = self(graph)
+            pred_energy_sum += pred_energy.cpu()
+            pred_force_sum += pred_force.cpu()
+            pred_energy_sq_sum += pred_energy.cpu() ** 2
+            pred_force_sq_sum += pred_force.cpu() ** 2
+
+        pred_energy_mean = pred_energy_sum / self.repeats
+        pred_force_mean = pred_force_sum / self.repeats
+        pred_energy_std = torch.sqrt(pred_energy_sq_sum / self.repeats - pred_energy_mean ** 2)
+        pred_force_std = torch.sqrt(pred_force_sq_sum / self.repeats - pred_force_mean ** 2)
+
+        # move calculated metrics back to GPU before passing to metric functions
+        self.energy_test_metric(pred_energy_mean.cuda() * self.scale + self.shift, graph.energy)
+        self.force_test_metric(pred_force_mean.cuda() * self.scale, graph.force)
+        # log the std of the predictions
+        self.log("Energy test std", pred_energy_std.cuda() * self.scale, prog_bar=True)
+        self.log("Force test std", pred_force_std.cuda() * self.scale, prog_bar=True)
 
     def on_test_epoch_end(self):
         self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
@@ -146,10 +177,11 @@ class MD17Model(pl.LightningModule):
         self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
         
     def configure_optimizers(self):
-        #optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        warmup_epochs = np.ceil(self.trainer.max_epochs * 0.05)
+        #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
+        #warmup_epochs = np.ceil(self.trainer.max_epochs * 0.05)
+        warmup_epochs = self.warmup_epochs
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
         return [optimizer], [scheduler]
 
