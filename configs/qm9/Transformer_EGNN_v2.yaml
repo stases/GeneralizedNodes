@@ -9,23 +9,23 @@ only_ground: True
 residual: True
 norm: "layer"
 mask: True
-trainer: md17
-learning_rate: 0.0001
-RFF_dim: 96
-RFF_sigma: 10
-epochs: 2000
-warmup_epochs: 100
-batch_size: 4
+trainer: qm9
+learning_rate: 0.0002
+RFF_dim: null
+RFF_sigma: null
+epochs: 1600
+warmup_epochs: 10
+batch_size: 96
+fully_connect: True
 subgraph_dict:
   mode: "transformer_10"
-node_features: 19
-fully_connect: True
-name: "aspirin CCSD"
+node_features: 21
+LABEL_INDEX: 7
 edge_features: 0
 hidden_features: 48
 out_features: 1
-data_dir: "./data/md17"
-model_dir: "./trained/md17"
+data_dir: "./data/qm9"
+model_dir: "./trained/qm9"
 log_dir: "./logs"
 optimizer:
   name: Adam

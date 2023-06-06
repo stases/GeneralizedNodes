@@ -10,6 +10,7 @@ import pytorch_lightning as pl
 import wandb
 import torchmetrics
 from torch_geometric.datasets import QM9
+
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):
         self.warmup = warmup
@@ -47,14 +48,15 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
 
     return train, valid, test
 
-def get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_connect=False):
-    if subgraph:
-        transform = Graph_to_Subgraph(fully_connect=fully_connect)
-    elif fully_connect and not subgraph:
-        transform = Fully_Connected_Graph()
-    else:
-        transform = None
-
+def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False, subgraph_dict=None):
+    transforms = []
+    if fully_connect:
+        transforms.append(Fully_Connected_Graph())
+    if subgraph_dict is not None:
+        subgraph_mode = subgraph_dict.get("mode", None)
+        transforms.append(Graph_to_Subgraph(mode=subgraph_mode))
+    if len(transforms) > 0:
+        transform = T.Compose(transforms)
     train, valid, test = get_qm9(data_dir, device=device, LABEL_INDEX=LABEL_INDEX, transform=transform)
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
@@ -64,14 +66,16 @@ def get_datasets(data_dir, device, LABEL_INDEX, subgraph, batch_size, fully_conn
 
 
 class QM9Model(pl.LightningModule):
-    def __init__(self, model, data_dir, LABEL_INDEX, batch_size, subgraph_dict=None, **kwargs):
+    def __init__(self, model, data_dir, LABEL_INDEX, batch_size, warmup_epochs, fully_connect, subgraph_dict=None, **kwargs):
         super().__init__()
         self.model = model
         self.data_dir = data_dir
         self.LABEL_INDEX = LABEL_INDEX
+        self.fully_connect = fully_connect
         self.subgraph_dict = subgraph_dict
         self.batch_size = batch_size
         self.criterion = torch.nn.L1Loss()
+        self.warmup_epochs = warmup_epochs
         self.learning_rate = kwargs['learning_rate']
         self.energy_train_metric = torchmetrics.MeanAbsoluteError()
         self.energy_valid_metric = torchmetrics.MeanAbsoluteError()
@@ -84,7 +88,7 @@ class QM9Model(pl.LightningModule):
         graph = batch.to(self.device)
         graph.x = graph.x.float()
         target = batch.y[:, self.LABEL_INDEX]
-        out = self.model(graph)
+        out = self.model(graph).squeeze()
         loss = self.criterion(out, (target-self.mean)/self.mad)
         self.energy_train_metric(out*self.mad+self.mean, target)
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
@@ -101,7 +105,7 @@ class QM9Model(pl.LightningModule):
         graph = batch.to(self.device)
         graph.x = graph.x.float()
         target = batch.y[:, self.LABEL_INDEX]
-        out = self.model(graph)
+        out = self.model(graph).squeeze()
         self.energy_valid_metric(out*self.mad+self.mean, target)
 
     def on_validation_epoch_end(self):
@@ -112,7 +116,7 @@ class QM9Model(pl.LightningModule):
         graph = batch.to(self.device)
         graph.x = graph.x.float()
         target = batch.y[:, self.LABEL_INDEX]
-        out = self.model(graph)
+        out = self.model(graph).squeeze()
         self.energy_test_metric(out * self.mad + self.mean, target)
 
     def on_test_epoch_end(self):
@@ -124,18 +128,19 @@ class QM9Model(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
-        warmup_epochs = np.ceil(self.trainer.max_epochs * 0.05)
+        warmup_epochs = self.warmup_epochs
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
         return [optimizer], [scheduler]
 
+    #data_dir, device, LABEL_INDEX, batch_size, fully_connect=False, subgraph_dict=None
     def train_dataloader(self):
-        train_loader, _, _ = get_datasets(self.data_dir, self.device, self.name, self.batch_size, self.subgraph_dict)
+        train_loader, _, _ = get_datasets(self.data_dir, self.device, self.LABEL_INDEX, self.batch_size, self.fully_connect, self.subgraph_dict)
         return train_loader
 
     def val_dataloader(self):
-        _, valid_loader, _ = get_datasets(self.data_dir, self.device, self.name, self.batch_size, self.subgraph_dict)
+        _, valid_loader, _ = get_datasets(self.data_dir, self.device, self.LABEL_INDEX, self.batch_size, self.fully_connect, self.subgraph_dict)
         return valid_loader
 
     def test_dataloader(self):
-        _, _, test_loader = get_datasets(self.data_dir, self.device, self.name, self.batch_size, self.subgraph_dict)
+        _, _, test_loader = get_datasets(self.data_dir, self.device, self.LABEL_INDEX, self.batch_size, self.fully_connect, self.subgraph_dict)
         return test_loader
