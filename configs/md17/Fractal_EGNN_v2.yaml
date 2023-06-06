@@ -2,7 +2,7 @@ model_arch: Fractal_EGNN_v2
 depth: 2
 pool: "add"
 only_ground: True
-add_residual_skip: True
+residual: False
 norm: "none"
 mask: True
 trainer: md17

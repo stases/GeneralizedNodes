@@ -520,3 +520,80 @@ class GNN_no_rel(nn.Module):
         """
         return next(self.parameters()).device
 
+class Transformer_EGNN_v2_backup(nn.Module):
+    def __init__(
+            self,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            num_heads=1,
+            num_ascend_heads=4,
+            activation="swish",
+            norm="layer",
+            aggr="sum",
+            sub_aggr="sum",
+            pool="add",
+            residual=True,
+            RFF_dim=None,
+            RFF_sigma=None,
+            mask=None,
+            only_ground=False,
+            **kwargs
+    ):
+        super().__init__()
+        # Name of the network
+        self.name = "Transformer_EGNN_v2"
+        self.depth = depth
+        self.mask = mask
+        self.only_ground = only_ground
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.ground_mps = torch.nn.ModuleList()
+        self.ground_to_sub_mps = torch.nn.ModuleList()
+        self.sub_mps = torch.nn.ModuleList()
+        self.sub_to_ground_mps = torch.nn.ModuleList()
+        for layer in range(depth):
+            #self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+            self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+        self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+        self.test_layer = nn.Linear(hidden_features, hidden_features)
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features*num_ascend_heads, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        for layer_idx in range(self.depth):
+            h_backup = h.clone()
+            h = self.test_layer(h)
+            h[batch.ground_node] = h_backup[batch.ground_node]
+        if self.only_ground:
+            out = self.pool(h[batch.ground_node], batch.batch[batch.ground_node])
+        else:
+            out = self.pool(h, batch.batch)
+
+        return self.pred(out)
+
+    def _forward(self, batch):
+        h = self.emb_in(batch.x)
+        for layer_idx in range(self.depth):
+            pass;
+
+        if self.only_ground:
+            out = self.pool(h[batch.ground_node], batch.batch[batch.ground_node])
+        else:
+            out = self.pool(h, batch.batch)
+
+        return self.pred(out)
