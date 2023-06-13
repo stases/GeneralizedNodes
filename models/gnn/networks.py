@@ -636,6 +636,7 @@ class Transformer_EGNN_v2(nn.Module):
             RFF_sigma=None,
             mask=None,
             only_ground=False,
+            only_sub=False,
             **kwargs
     ):
         super().__init__()
@@ -645,6 +646,7 @@ class Transformer_EGNN_v2(nn.Module):
         self.ascend_depth = ascend_depth
         self.mask = mask
         self.only_ground = only_ground
+        self.only_sub = only_sub
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -713,6 +715,8 @@ class Transformer_EGNN_v2(nn.Module):
                 
         if self.only_ground:
             out = self.pool(h[batch.ground_node], batch.batch[batch.ground_node])
+        elif self.only_sub:
+            out = self.pool(h[~batch.ground_node], batch.batch[~batch.ground_node])
         else:
             out = self.pool(h, batch.batch)
         # (n, d) -> (batch_size, d)
