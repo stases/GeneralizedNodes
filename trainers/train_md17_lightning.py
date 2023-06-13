@@ -51,6 +51,15 @@ def get_shift_scale(train_loader):
     scale = force_scale
     return shift, scale
 
+def get_num_nodes(train_loader):
+    for data in train_loader:
+        # Get the batch tensor
+        batch = data.batch
+        # Get nodes that belong to the first graph in the batch
+        first_graph_nodes = batch == batch.min()
+        return first_graph_nodes.sum().item()
+
+
 class MD17Model(pl.LightningModule):
     def __init__(self, model,data_dir, name, batch_size, warmup_epochs, subgraph_dict=None, **kwargs):
         super().__init__()
@@ -60,7 +69,10 @@ class MD17Model(pl.LightningModule):
         self.subgraph_dict = subgraph_dict
         self.warmup_epochs = warmup_epochs
         self.batch_size = batch_size
-        self.weight = 1000.0
+        self.num_nodes = get_num_nodes(self.train_dataloader())
+        print("Number of nodes", self.num_nodes)
+        #self.weight = 1000.0
+        self.weight = self.num_nodes ** 2
         self.repeats = 20
         self.learning_rate = kwargs['learning_rate']
 
