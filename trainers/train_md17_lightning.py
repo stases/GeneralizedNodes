@@ -153,10 +153,10 @@ class MD17Model(pl.LightningModule):
         pred_force_sq_sum = 0
         for r in range(self.repeats):
             pred_energy, pred_force = self(graph)
-            pred_energy_sum += pred_energy.cpu()
-            pred_force_sum += pred_force.cpu()
-            pred_energy_sq_sum += pred_energy.cpu() ** 2
-            pred_force_sq_sum += pred_force.cpu() ** 2
+            pred_energy_sum += pred_energy.detach()
+            pred_force_sum += pred_force.detach()
+            pred_energy_sq_sum += (pred_energy.detach() ** 2)
+            pred_force_sq_sum += (pred_force.detach() ** 2)
 
         pred_energy_mean = pred_energy_sum / self.repeats
         pred_force_mean = pred_force_sum / self.repeats
@@ -164,11 +164,11 @@ class MD17Model(pl.LightningModule):
         pred_force_std = torch.sqrt(pred_force_sq_sum / self.repeats - pred_force_mean ** 2)
 
         # move calculated metrics back to GPU before passing to metric functions
-        self.energy_test_metric(pred_energy_mean.cuda() * self.scale + self.shift, graph.energy)
-        self.force_test_metric(pred_force_mean.cuda() * self.scale, graph.force)
+        self.energy_test_metric(pred_energy_mean * self.scale + self.shift, graph.energy)
+        self.force_test_metric(pred_force_mean * self.scale, graph.force)
         # log the std of the predictions
-        self.log("Energy test std", pred_energy_std.cuda() * self.scale, prog_bar=True)
-        self.log("Force test std", pred_force_std.cuda() * self.scale, prog_bar=True)
+        self.log("Energy test std", pred_energy_std * self.scale, prog_bar=True)
+        self.log("Force test std", pred_force_std * self.scale, prog_bar=True)
 
     def on_test_epoch_end(self):
         self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
