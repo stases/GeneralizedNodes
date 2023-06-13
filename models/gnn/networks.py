@@ -647,6 +647,8 @@ class Transformer_EGNN_v2(nn.Module):
         self.mask = mask
         self.only_ground = only_ground
         self.only_sub = only_sub
+        # print only sub
+        print("Only sub is {}".format(self.only_sub))
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 

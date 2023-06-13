@@ -7,6 +7,7 @@ import yaml
 import pytorch_lightning as pl
 import wandb
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 from models.gnn.networks import *
 from misc.train_qm9_debug import train_qm9_model
@@ -126,13 +127,22 @@ model = model.to(device)
 
 #####################
 #  Training loop    #
+if trainer_name == "qm9":
+    target_name = config['LABEL_INDEX']
+elif trainer_name == "md17":
+    target_name = config['name']
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
 wandb.init()
 wandb.config.update(config)
 wandb_logger = WandbLogger()
-trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0)
+checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
+trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 #trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0)
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)
+# get the name of the best model
+best_model_name = checkpoint_callback.best_model_path.split("/")[-1]
+torch.save(config, os.path.join("trained/", trainer_name, target_name, model_arch, best_model_name + ".yaml"))
+
 #####################
