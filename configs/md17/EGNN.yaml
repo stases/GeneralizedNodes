@@ -15,7 +15,7 @@ RFF_sigma: 10.0
 fully_connect: True
 node_features: 9
 Z_ONE_HOT_DIM: 11
-name: "aspirin CCSD"
+name: "benzene CCSD(T)"
 EDGE_ATTR_DIM: 4
 edge_features: 0
 hidden_features: 48

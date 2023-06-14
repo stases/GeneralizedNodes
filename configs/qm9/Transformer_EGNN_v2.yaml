@@ -13,8 +13,8 @@ trainer: qm9
 learning_rate: 0.0002
 RFF_dim: null
 RFF_sigma: null
-epochs: 1600
-warmup_epochs: 10
+epochs: 1000
+warmup_epochs: 50
 batch_size: 96
 fully_connect: True
 subgraph_dict:
