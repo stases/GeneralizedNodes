@@ -655,11 +655,15 @@ class Transformer_EGNN_v2(nn.Module):
         self.ground_to_sub_mps = torch.nn.ModuleList()
         self.sub_mps = torch.nn.ModuleList()
         self.sub_to_ground_mps = torch.nn.ModuleList()
+        self.descend_normalization = torch.nn.ModuleList()
+        self.sub_normalization = torch.nn.ModuleList()
         self.ascend_normalization = torch.nn.ModuleList()
         for layer in range(depth):
             self.ground_mps.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
             self.ground_to_sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+            self.descend_normalization.append(nn.LayerNorm(hidden_features)) if norm == "layer" else nn.Identity()
             self.sub_mps.append(TransformerConv(hidden_features, hidden_features, num_heads, concat=False))
+            self.sub_normalization.append(nn.LayerNorm(hidden_features)) if norm == "layer" else nn.Identity()
         for layer in range(ascend_depth):
             self.sub_to_ground_mps.append(TransformerConv(hidden_features, hidden_features, num_ascend_heads, concat=False))
             self.ascend_normalization.append(nn.LayerNorm(hidden_features)) if norm == "layer" else nn.Identity()
@@ -686,33 +690,34 @@ class Transformer_EGNN_v2(nn.Module):
             # Ground node message passing layer
             mask = catch_lone_sender(batch.edge_index, num_nodes).to(device) if self.mask else None
             h = self.ground_mps[layer_idx](h, pos, batch.edge_index, mask=mask)
-            #h_after_EGNN = h[batch.ground_node]
-
+            if self.residual:
+                h = h + h_0
 
             # Ground to subnode message passing layer
             h_old = h.clone()
-            mask = catch_lone_sender(batch.node_subnode_index, num_nodes).to(device) if self.mask else None
+            h_0 = h
             h = self.ground_to_sub_mps[layer_idx](h, batch.node_subnode_index)
+            if self.residual:
+                h = h + h_0
+            h = self.descend_normalization[layer_idx](h)
             h[batch.ground_node] = h_old[batch.ground_node]
-
 
             # Subnode message passing layer
             h_old = h.clone()
-            mask = catch_lone_sender(batch.subgraph_edge_index, num_nodes).to(device) if self.mask else None
+            h_0 = h
             h = self.sub_mps[layer_idx](h, batch.subgraph_edge_index)
-            h[batch.ground_node] = h_old[batch.ground_node]
-
-            # Adding residual connections at the very end
             if self.residual:
                 h = h + h_0
-            # Update node features (n, d) -> (n, d)
+            h = self.sub_normalization[layer_idx](h)
+            h[batch.ground_node] = h_old[batch.ground_node]
+
         for layer_idx in range(self.ascend_depth):
             h_0 = h
             h = self.sub_to_ground_mps[layer_idx](h, batch.subnode_node_index)
-            h = self.ascend_normalization[layer_idx](h)
             if self.residual:
                 h = h + h_0
-                
+            h = self.ascend_normalization[layer_idx](h)
+
         if self.only_ground:
             out = self.pool(h[batch.ground_node], batch.batch[batch.ground_node])
         elif self.only_sub:
