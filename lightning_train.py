@@ -128,7 +128,7 @@ model = model.to(device)
 #####################
 #  Training loop    #
 if trainer_name == "qm9":
-    target_name = config['LABEL_INDEX']
+    target_name = str(config['LABEL_INDEX'])
 elif trainer_name == "md17":
     target_name = config['name']
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")

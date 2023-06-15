@@ -106,10 +106,14 @@ class QM9Model(pl.LightningModule):
         graph.x = graph.x.float()
         target = batch.y[:, self.LABEL_INDEX]
         out = self.model(graph).squeeze()
+        loss = self.criterion(out, (target-self.mean)/self.mad)
+        self.val_loss = loss.item()
         self.energy_valid_metric(out*self.mad+self.mean, target)
+        return loss
 
     def on_validation_epoch_end(self):
         self.log("Energy valid MAE", self.energy_valid_metric, prog_bar=True)
+        self.log("val_loss", self.val_loss, prog_bar=True)
 
     @torch.inference_mode(False)
     def test_step(self, batch, batch_idx):
