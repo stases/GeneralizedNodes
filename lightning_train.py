@@ -14,6 +14,7 @@ from misc.train_qm9_debug import train_qm9_model
 from trainers.train_md17 import train_md17_model
 from trainers.train_md17_lightning import MD17Model
 from trainers.train_qm9_lightning import QM9Model
+from trainers.train_MNIST_lightning import MNISTModel
 
 #####################
 #  Helper functions #
@@ -21,7 +22,10 @@ MODEL_MAP = {
     "fractalnet": FractalNet,
     "net": Net,
     "transformernet": TransformerNet,
+    "MPNN": MPNN,
+    "Transformer_MPNN": Transformer_MPNN,
     "EGNN": EGNN,
+    "EGNN_Full": EGNN_Full,
     "Fractal_EGNN": Fractal_EGNN,
     "Fractal_EGNN_v2": Fractal_EGNN_v2,
     "Transformer_EGNN": Transformer_EGNN,
@@ -32,6 +36,7 @@ MODEL_MAP = {
 TRAINER_MAP = {
     "qm9": QM9Model,
     "md17": MD17Model,
+    "mnist": MNISTModel,
     # Add more trainers here
 }
 
@@ -131,13 +136,16 @@ if trainer_name == "qm9":
     target_name = str(config['LABEL_INDEX'])
 elif trainer_name == "md17":
     target_name = config['name']
+elif trainer_name == "mnist":
+    target_name = "mnist"
+
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
-wandb.init()
+wandb.init(project=trainer_name, name=model_arch)
 wandb.config.update(config)
 wandb_logger = WandbLogger()
 checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
 trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
-#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0)
+#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)

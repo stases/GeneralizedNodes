@@ -14,6 +14,7 @@ from torch import Tensor
 from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.typing import Adj, OptTensor, PairTensor, SparseTensor
 from torch_geometric.utils import softmax
+from torch_scatter import scatter
 
 def catch_lone_sender(edge_index, num_nodes):
     receiver = edge_index[1]
@@ -295,6 +296,36 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
 
+class MPNNLayer(tg.nn.MessagePassing):
+    """ Message Passing Layer """
+
+    def __init__(self, node_features, edge_features, hidden_features, out_features, aggr="mean", act=nn.ReLU):
+        super().__init__(aggr=aggr)
+
+        self.message_net = nn.Sequential(nn.Linear(2 * node_features + edge_features, hidden_features),
+                                         act(),
+                                         nn.Linear(hidden_features, hidden_features))
+
+        self.update_net = nn.Sequential(nn.Linear(node_features + hidden_features, hidden_features),
+                                        act(),
+                                        nn.Linear(hidden_features, out_features))
+
+    def forward(self, x, edge_index, edge_attr=None):
+        x = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        return x
+
+    def message(self, x_i, x_j, edge_attr):
+        """ Construct messages between nodes """
+        input = [x_i, x_j] if edge_attr is None else [x_i, x_j, edge_attr]
+        input = torch.cat(input, dim=-1)
+        message = self.message_net(input)
+        return message
+
+    def update(self, message, x):
+        """ Update node features """
+        input = torch.cat((x, message), dim=-1)
+        update = self.update_net(input)
+        return update
 
 class EGNNLayer(tg.nn.MessagePassing):
     def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None):
