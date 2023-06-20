@@ -548,9 +548,6 @@ class MultiHeadGATLayer(tg.nn.MessagePassing):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, num_heads={self.num_heads}, aggr={self.aggr})"
 
-
-
-
 class TransformerConv(tg.nn.MessagePassing):
     def __init__(
         self,

@@ -187,7 +187,6 @@ class Net(nn.Module):
         x = self.output_2(x)
         return x
 
-
 class MPNN(nn.Module):
     """ Message Passing Neural Network """
 
@@ -913,3 +912,102 @@ class Transformer_EGNN_v2(nn.Module):
         # (n, d) -> (batch_size, d)
         return self.pred(out)  # (batch_size, out_features)
 
+class Superpixel_EGNN(nn.Module):
+    def __init__(
+            self,
+            depth=5,
+            hidden_features=128,
+            node_features=1,
+            out_features=1,
+            activation="relu",
+            norm="layer",
+            aggr="sum",
+            mask=True,
+            pool="add",
+            residual=True,
+            **kwargs
+    ):
+        """E(n) Equivariant GNN model
+
+        Args:
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
+        """
+        super().__init__()
+        # Name of the network
+        self.name = "Superpixel_EGNN"
+        self.depth = depth
+        self.mask = mask
+        self.residual = residual
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.ground_mps = torch.nn.ModuleList()
+        self.ground_to_sub_mps = torch.nn.ModuleList()
+        self.sub_mps = torch.nn.ModuleList()
+        for layer in range(depth):
+            #self.convs.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
+            self.ground_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
+            self.ground_to_sub_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
+            self.sub_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
+
+        '''
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+        '''
+
+    def forward(self, batch):
+
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        pos = batch.pos  # (n, 3)
+
+        for layer_idx in range(self.depth):
+            # Message passing layer
+            h_old = h.clone()
+            pos_old = pos.clone()
+            h_update, pos_update = self.ground_mps[layer_idx](h, pos, batch.edge_index)
+            h = h + h_update if self.residual else h_update
+            pos = pos_update
+            if self.mask:
+                h[~batch.ground_node] = h_old[~batch.ground_node]
+                pos[~batch.ground_node] = pos_old[~batch.ground_node]
+
+            # Ground to subnode message passing layer
+            h_old = h.clone()
+            pos_old = pos.clone()
+            h_update, pos_update = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
+            h = h + h_update if self.residual else h_update
+            pos = pos_update
+            if self.mask:
+                h[batch.ground_node] = h_old[batch.ground_node]
+                pos[batch.ground_node] = pos_old[batch.ground_node]
+
+            # Subnode message passing layer
+            h_old = h.clone()
+            pos_old = pos.clone()
+            h_update, pos_update = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+            h = h + h_update if self.residual else h_update
+            pos = pos_update
+            if self.mask:
+                h[batch.ground_node] = h_old[batch.ground_node]
+                pos[batch.ground_node] = pos_old[batch.ground_node]
+
+        superpixel_pos = pos[~batch.ground_node]
+        superpixel_h = h[~batch.ground_node]
+        return superpixel_pos, superpixel_h
