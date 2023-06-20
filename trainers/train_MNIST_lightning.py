@@ -38,7 +38,8 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     train_set = train_val_set[:int(len(train_val_set) * 0.9)]
     val_set = train_val_set[int(len(train_val_set) * 0.9):]
     test_set = tg.datasets.MNISTSuperpixels(root=data_dir, transform=transforms, train=False)
-
+    # print which transforms are we using
+    print("Transforms: ", transforms)
     assert len(train_set) + len(val_set) == len(train_val_set)
 
     train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True)
