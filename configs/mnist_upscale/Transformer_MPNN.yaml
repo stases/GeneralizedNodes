@@ -1,0 +1,35 @@
+model_arch: Superpixel_EGNN
+depth: 3
+pool: "add"
+only_ground: True
+residual: False
+norm: "layer"
+mask: True
+trainer: mnist_upscale
+learning_rate: 0.0004
+RFF_dim: null
+RFF_sigma: null
+epochs: 40
+radius: 8
+warmup_epochs: 2
+batch_size: 64
+subgraph_dict:
+  mode: "transformer_3"
+fully_connect: True
+node_features: 4
+hidden_features: 48
+data_dir: "./data/mnist"
+model_dir: "./trained/mnist"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda

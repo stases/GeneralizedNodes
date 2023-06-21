@@ -63,8 +63,10 @@ class Subgraph:
             self.subgraph.pos = self.subgraph.pos.repeat(self.num_nodes+1,1)
         # In the case of the transformer, the position has no interpretable meaning so we don't se it.
         elif self.mode == 'transformer':
-            # Fill up subgraph.pos with zero positions so it matches self.total_num_nodes
-            self.subgraph.pos = torch.cat([self.subgraph.pos, torch.zeros(self.total_num_nodes-self.num_nodes, num_dimensions).to(self.device)], dim=0)
+            # Fill up subgraph.pos for the new nodes with the positions of the node they belong to
+            self.subgraph.pos = torch.cat([self.subgraph.pos, self.subgraph.pos.repeat_interleave(self.transformer_size, dim=0)], dim=0)
+
+            #self.subgraph.pos = torch.cat([self.subgraph.pos, torch.zeros(self.total_num_nodes-self.num_nodes, num_dimensions).to(self.device)], dim=0)
             # asser that subgraph pos[0] is equal to total num of nodes
             assert self.subgraph.pos.shape[0] == self.total_num_nodes
 

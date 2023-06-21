@@ -15,7 +15,7 @@ from trainers.train_md17 import train_md17_model
 from trainers.train_md17_lightning import MD17Model
 from trainers.train_qm9_lightning import QM9Model
 from trainers.train_MNIST_lightning import MNISTModel
-
+from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
 #####################
 #  Helper functions #
 MODEL_MAP = {
@@ -30,6 +30,7 @@ MODEL_MAP = {
     "Fractal_EGNN_v2": Fractal_EGNN_v2,
     "Transformer_EGNN": Transformer_EGNN,
     "Transformer_EGNN_v2": Transformer_EGNN_v2,
+    "Superpixel_EGNN": Superpixel_EGNN,
     # Add more models here
 }
 
@@ -37,6 +38,7 @@ TRAINER_MAP = {
     "qm9": QM9Model,
     "md17": MD17Model,
     "mnist": MNISTModel,
+    "mnist_upscale": MNISTSuperpixelsUpscale,
     # Add more trainers here
 }
 
@@ -138,7 +140,8 @@ elif trainer_name == "md17":
     target_name = config['name']
 elif trainer_name == "mnist":
     target_name = "mnist"
-
+else:
+    target_name = "unknown"
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
 wandb.init(project=trainer_name, name=model_arch)
 wandb.config.update(config)
