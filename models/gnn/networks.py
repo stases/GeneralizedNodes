@@ -924,26 +924,13 @@ class Superpixel_EGNN(nn.Module):
             aggr="sum",
             pool="add",
             residual=True,
+            mask=True,
             **kwargs
     ):
-        """E(n) Equivariant GNN model
-
-        Args:
-            depth: (int) - number of message passing layers
-            hidden_features: (int) - hidden dimension
-            node_features: (int) - initial node feature dimension
-            out_features: (int) - output number of classes
-            activation: (str) - non-linearity within MLPs (swish/relu)
-            norm: (str) - normalisation layer (layer/batch)
-            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
-            pool: (str) - global pooling function (sum/mean)
-            residual: (bool) - whether to use residual connections
-        """
         super().__init__()
         # Name of the network
-        self.name = "EGNN"
+        self.name = "Superpixel_EGNN"
         self.depth = depth
-
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
 
@@ -953,18 +940,23 @@ class Superpixel_EGNN(nn.Module):
         self.sub_mps = torch.nn.ModuleList()
         self.sub_to_ground_mps = torch.nn.ModuleList()
         for layer in range(depth):
-            #self.convs.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
             self.ground_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
             self.ground_to_sub_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
             self.sub_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
             #self.sub_to_ground_mps.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
         self.residual = residual
+        self.mask = mask
 
+        self.pred = torch.nn.Sequential(
+        torch.nn.Linear(hidden_features*1, hidden_features),
+        torch.nn.ReLU(),
+        torch.nn.Linear(hidden_features, out_features)
+        )
     def forward(self, batch):
 
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
-        pos = batch.pos  # (n, 3)
-
+        pos = batch.pos.clone()  # (n, 3)
+        pos[~batch.ground_node] += torch.randn_like(pos[~batch.ground_node]) * 0.01
         h_ground = h[batch.ground_node]
         pos_ground = pos[batch.ground_node]
 
@@ -972,18 +964,31 @@ class Superpixel_EGNN(nn.Module):
         pos_sub = pos[~batch.ground_node]
 
         for layer_idx in range(self.depth):
+            h_old = h.clone()
+            h_0 = h
+            pos_old = pos.clone()
             h_update, pos_update = self.ground_mps[layer_idx](h, pos, batch.edge_index)
             h = h + h_update if self.residual else h_update
             pos = pos_update
+            if self.mask:
+                pos[batch.ground_node] = pos_old[batch.ground_node]
 
+            pos_old = pos.clone()
             h_update, pos_update = self.ground_to_sub_mps[layer_idx](h, pos, batch.node_subnode_index)
             h = h + h_update if self.residual else h_update
             pos = pos_update
+            if self.mask:
+                pos[batch.ground_node] = pos_old[batch.ground_node]
 
+            pos_old = pos.clone()
             h_update, pos_update = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
             h = h + h_update if self.residual else h_update
             pos = pos_update
+            if self.mask:
+                pos[batch.ground_node] = pos_old[batch.ground_node]
 
+
+        h = self.pred(h)
         superpixel_pos = pos[~batch.ground_node]
         superpixel_h = h[~batch.ground_node]
         return superpixel_pos, superpixel_h

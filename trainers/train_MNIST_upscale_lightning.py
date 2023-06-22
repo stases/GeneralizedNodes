@@ -1,31 +1,178 @@
+import os
+from typing import Callable, List, Optional
+
 import numpy as np
-from utils.transforms import Graph_to_Subgraph, Fully_Connected_Graph, Rename_MD17_Features, To_OneHot
 import pytorch_lightning as pl
-import torchmetrics
 import torch
-import torch.nn.functional as F
-from torch_geometric.transforms import RadiusGraph, Compose, BaseTransform, Distance, Cartesian, RandomRotate
 import torch_geometric as tg
-import torch
-from sklearn.cluster import KMeans
-from torch_geometric.data import Data
-from torch_geometric.transforms import BaseTransform
-import os
-from typing import Callable, List, Optional
-import torch
-from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
-from tqdm import tqdm
-import os
-from typing import Callable, List, Optional
-import torch
-from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
-from tqdm import tqdm
 from geomloss import SamplesLoss
+from sklearn.cluster import KMeans
+from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
+from torch_geometric.transforms import BaseTransform
+from torch_geometric.transforms import RadiusGraph, Compose
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import networkx as nx
+import wandb
+from utils.transforms import Graph_to_Subgraph
+import wandb
+from PIL import Image
+import io
+import torch_geometric.data
+import torch
+from torch_geometric.utils import to_networkx
+
+def visualize_sample(input_graph, output_graph, target_graph, mode):
+    fig, axs = plt.subplots(1, 3, figsize=(36, 12))
+
+    # For the input graph
+    sample_graph = input_graph
+    sample_graph.pos -= sample_graph.pos.min()
+    sample_graph.pos = sample_graph.pos/sample_graph.pos.max() * 2 - 1
+    pos_dict = {}
+    for i, p in enumerate(sample_graph.pos):
+        pos_dict[i] = p.detach().numpy() * np.array([1, -1])
+    g = to_networkx(sample_graph, to_undirected=True)
+    nx.draw_networkx_nodes(g,
+                           node_size=500,
+                           node_color=sample_graph.x.detach().cpu().numpy(),
+                           node_shape=r'$\circ$',
+                           pos=pos_dict,
+                           cmap='Purples',
+                           ax=axs[0])
+    nx.draw_networkx_edges(g, edge_color='r', alpha=0.5, pos=pos_dict, ax=axs[0])
+    axs[0].set_title('Input Graph', fontsize=25)
+
+    # For the output graph
+    sample_graph = output_graph
+    sample_graph.pos -= sample_graph.pos.min()
+    sample_graph.pos = sample_graph.pos/sample_graph.pos.max() * 2 - 1
+    pos_dict = {}
+    for i, p in enumerate(sample_graph.pos):
+        pos_dict[i] = p.detach().numpy() * np.array([1, -1])
+    g = to_networkx(sample_graph, to_undirected=True)
+    nx.draw_networkx_nodes(g,
+                           node_size=500,
+                           node_color=sample_graph.x.detach().cpu().numpy(),
+                           node_shape=r'$\circ$',
+                           pos=pos_dict,
+                           cmap='Purples',
+                           ax=axs[1])
+    nx.draw_networkx_edges(g, edge_color='r', alpha=0.5, pos=pos_dict, ax=axs[1])
+    axs[1].set_title('Output Graph', fontsize=25)
+
+    # For the target graph
+    sample_graph = target_graph
+    sample_graph.pos -= sample_graph.pos.min()
+    sample_graph.pos = sample_graph.pos/sample_graph.pos.max() * 2 - 1
+    pos_dict = {}
+    for i, p in enumerate(sample_graph.pos):
+        pos_dict[i] = p.detach().numpy() * np.array([1, -1])
+    g = to_networkx(sample_graph, to_undirected=True)
+    nx.draw_networkx_nodes(g,
+                           node_size=500,
+                           node_color=sample_graph.x.detach().cpu().numpy(),
+                           node_shape=r'$\circ$',
+                           pos=pos_dict,
+                           cmap='Purples',
+                           ax=axs[2])
+    nx.draw_networkx_edges(g, edge_color='r', alpha=0.5, pos=pos_dict, ax=axs[2])
+    axs[2].set_title('Target Graph', fontsize=25)
+    #plt.show()
+    # Convert the figure to an image
+    wandb_image = wandb.Image(fig)
+
+    # Log the image using WandB
+    if mode == "train":
+        wandb.log({"Train Sample Image": wandb_image})
+    elif mode == "val":
+        wandb.log({"Validation Sample Image": wandb_image})
+    elif mode == "train_specific":
+        wandb.log({"Train Specific Sample Image": wandb_image})
+    elif mode == "val_specific":
+        wandb.log({"Validation Specific Sample Image": wandb_image})
+    plt.close(fig)
+
+def extract_graph(data, graph_id):
+    device = 'cpu'
+
+    # Get mask of nodes that belong to the graph_id
+    node_mask = data.batch == graph_id
+    node_mask = node_mask.to(device)
+    # Extract node attributes
+    x = None
+    pos = None
+    if data.x is not None:
+        x = data.x[node_mask]
+    if data.pos is not None:
+        pos = data.pos[node_mask]
+
+    x = x.to(device)
+    pos = pos.to(device)
+    
+    # Create a mapping from old node indices to new node indices
+    node_index_mapping = torch.full((data.batch.size(0), ), -1, dtype=torch.long, device=device).to(device)
+    node_index_mapping[node_mask] = torch.arange(node_mask.sum().item(), dtype=torch.long)
+
+    # Get mask of edges that belong to the graph_id
+    node_mask = node_mask.to(device)
+    data.edge_index = data.edge_index.to(device)
+    edge_mask = node_mask[data.edge_index[0]] & node_mask[data.edge_index[1]].to(device)
+
+    # Extract edge attributes
+    edge_index = None
+    if data.edge_index is not None:
+        edge_index = node_index_mapping[data.edge_index[:, edge_mask]].to(device)
+
+    # Create single graph data
+    single_graph_data = torch_geometric.data.Data(x=x, edge_index=edge_index, pos=pos)
+
+    return single_graph_data
+
+def prepare_sample(batch, superpixel_pos, superpixel_h, radius=8):
+    input_data = Data(x=batch.x[batch.ground_node][:, 0].unsqueeze(-1), pos=batch.pos[batch.ground_node],
+                      batch=batch.batch[batch.ground_node], y=batch.y)
+    input_data = RadiusGraph(radius)(input_data)
+
+    output_data = Data(x=superpixel_h, pos=superpixel_pos, batch=batch.batch[~batch.ground_node], y=batch.y)
+    output_data = RadiusGraph(radius)(output_data)
+
+    target_data = Data(pos=batch.pos_full, x=batch.x_full, edge_index=batch.edge_index,
+                       batch=batch.batch[~batch.ground_node], y=batch.y)
+    target_data = RadiusGraph(radius)(target_data)
+    return input_data, output_data, target_data
 
 def sinkhorn_loss(x, y):
     # "sinkhorn" loss ('blur':σ=0.01, 'scaling':0.9)
     loss = SamplesLoss(loss="sinkhorn", p=2, blur=0.01, scaling=0.9)
     return loss(x, y)
+
+def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
+    cluster_k = 3
+    transforms = []
+    transforms.append(RadiusGraph(radius))
+    if subgraph_dict is not None:
+        subgraph_mode = subgraph_dict.get("mode", None)
+        transforms.append(Graph_to_Subgraph(mode=subgraph_mode))
+    transforms = Compose(transforms)
+    # TODO: RESCALE THE DATASET BACK TO THE ORIGINAL SIZE
+    train_val_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=True, cluster_k=cluster_k)
+    # split train into train and val sets by taking the last 10% of the training set
+    train_set = train_val_set[:int(len(train_val_set) * 0.9)]
+    train_set = train_set[:1000]
+    val_set = train_val_set[int(len(train_val_set) * 0.9):]
+    val_set = val_set[:1000]
+    test_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=False, cluster_k=cluster_k)
+    # print which transforms are we using
+    print("Transforms: ", transforms)
+    #assert len(train_set) + len(val_set) == len(train_val_set)
+
+    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, )
+    val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False)
+    test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader
+
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):
         self.warmup = warmup
@@ -140,34 +287,8 @@ class MNISTSuperpixels(InMemoryDataset):
 
             torch.save(self.collate(data_list), self.processed_paths[i])
 
-def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
-    cluster_k = 3
-    transforms = []
-    transforms.append(RadiusGraph(radius))
-    if subgraph_dict is not None:
-        subgraph_mode = subgraph_dict.get("mode", None)
-        transforms.append(Graph_to_Subgraph(mode=subgraph_mode))
-    transforms = Compose(transforms)
-    # TODO: RESCALE THE DATASET BACK TO THE ORIGINAL SIZE
-    train_val_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=True, cluster_k=cluster_k)
-    # split train into train and val sets by taking the last 10% of the training set
-    train_set = train_val_set[:int(len(train_val_set) * 0.9)]
-    train_set = train_set[:1000]
-    val_set = train_val_set[int(len(train_val_set) * 0.9):]
-    val_set = val_set[:1000]
-    test_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=False, cluster_k=cluster_k)
-    # print which transforms are we using
-    print("Transforms: ", transforms)
-    #assert len(train_set) + len(val_set) == len(train_val_set)
-
-    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, )
-    val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False)
-    test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False)
-
-    return train_loader, val_loader, test_loader
-
 class MNISTSuperpixelsUpscale(pl.LightningModule):
-    def __init__(self, model, data_dir, radius, batch_size, warmup_epochs, subgraph_dict=None, **kwargs):
+    def __init__(self, model, data_dir, radius, batch_size, warmup_epochs, subgraph_dict=None, log_img=True, **kwargs):
         super().__init__()
         self.model = model
         print(self.model)
@@ -177,31 +298,53 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         self.warmup_epochs = warmup_epochs
         self.subgraph_dict = subgraph_dict
         self.learning_rate = kwargs["learning_rate"]
-
+        self.graphs_to_plot = 1
         self.train_sinkhorn_loss = []
         self.val_sinkhorn_loss = []
+        self.log_img = log_img
+        self.current_train_data = None
+        self.specific_train_data = None
+        self.current_val_data = None
+        self.specific_val_data = None
+        self.specific_train_data_assigned = False
+        self.specific_val_data_assigned = False
 
     def forward(self, graph):
         return self.model(graph)
 
-    def training_step(self, graph):
-        graph = graph.to(self.device)
+    def training_step(self, batch):
+        batch = batch.to(self.device)
+        graph = batch
         # add gaussian noise to the positions of the graph
-        graph.pos = graph.pos + torch.randn(graph.pos.shape).to(self.device) * 0.01
+        #graph.pos = graph.pos + torch.randn(graph.pos.shape).to(self.device) * 0.01
         superpixel_pos, superpixel_h = self(graph)
-        # Check if the gradients of the model are nan. Go through all parameters of the model and print which one has nan gradient
 
-        batch_size = graph.batch.max() + 1
+        # LOSS
+        diff = graph.pos_full - superpixel_pos
+        squared_diff = diff ** 2
+        loss_pos = torch.mean(squared_diff)
+        loss_h = torch.mean(torch.square(graph.x_full - superpixel_h))
+        #loss = loss_pos + loss_h
+        loss = loss_pos
+
+        self.current_train_data = {'input': graph,
+                             'output_pos': superpixel_pos,
+                             'output_h': superpixel_h,
+                             }
+        if self.specific_train_data_assigned is False:
+            self.specific_train_data = graph
+            self.specific_train_data_assigned = True
+
         # Pack the positions and the superpixel_h into a tensor [B, N, 2]
         superpixel_pos = torch.stack([superpixel_pos[i] for i in graph.batch])
         true_pos = torch.stack([graph.pos_full[i] for i in graph.batch])
         # assert that true pos and superpixel pos have the same shape
         assert superpixel_pos.shape == true_pos.shape
-        # print the shapes
-
-        loss = sinkhorn_loss(superpixel_pos, true_pos)
+        # LOSS TODO SINKHORN
+        #loss = sinkhorn_loss(superpixel_pos, true_pos)
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+
         self.train_sinkhorn_loss.append(loss.item())
         self.log("lr", cur_lr, prog_bar=True, on_step=True)
         return loss
@@ -210,10 +353,41 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         avg_train_loss = torch.mean(torch.tensor(self.train_sinkhorn_loss))
         self.log("train_loss", avg_train_loss, prog_bar=True)
         self.train_sinkhorn_loss = []
+        if self.current_train_data is not None:
+            for idx in range(self.graphs_to_plot):
+                batch = self.current_train_data['input']
+                superpixel_pos = self.current_train_data['output_pos']
+                superpixel_h = self.current_train_data['output_h']
+
+                input_data, output_data, target_data = prepare_sample(batch, superpixel_pos, superpixel_h)
+
+                input_graph = extract_graph(input_data, idx)
+                output_graph = extract_graph(output_data, idx)
+                target_graph = extract_graph(target_data, idx)
+                if self.log_img:
+                    visualize_sample(input_graph, output_graph, target_graph, "train")
+        if self.log_img:
+            batch = self.specific_train_data
+            superpixel_pos, superpixel_h = self(batch)
+            input_data, output_data, target_data = prepare_sample(batch, superpixel_pos, superpixel_h)
+
+            input_graph = extract_graph(input_data, 0)
+            output_graph = extract_graph(output_data, 0)
+            target_graph = extract_graph(target_data, 0)
+            visualize_sample(input_graph, output_graph, target_graph, "train_specific")
 
     def validation_step(self, graph, batch_idx):
         graph = graph.to(self.device)
+        #graph.pos + torch.randn(graph.pos.shape).to(self.device) * 0.01
         superpixel_pos, superpixel_h = self(graph)
+        self.current_val_data = {'input': graph,
+                                'output_pos': superpixel_pos,
+                                'output_h': superpixel_h,
+                                }
+        if self.specific_val_data_assigned is False:
+            self.specific_val_data = graph
+            self.specific_val_data_assigned = True
+
         superpixel_pos = torch.stack([superpixel_pos[i] for i in graph.batch])
         true_pos = torch.stack([graph.pos_full[i] for i in graph.batch])
         loss = sinkhorn_loss(superpixel_pos, true_pos)
@@ -225,6 +399,29 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         avg_val_loss = torch.mean(torch.tensor(self.val_sinkhorn_loss))
         self.log("val_loss", avg_val_loss, prog_bar=True)
         self.val_sinkhorn_loss = []
+        if self.current_val_data is not None:
+            for idx in range(self.graphs_to_plot):
+                batch = self.current_val_data['input']
+                superpixel_pos = self.current_val_data['output_pos']
+                superpixel_h = self.current_val_data['output_h']
+                input_data, output_data, target_data = prepare_sample(batch, superpixel_pos, superpixel_h)
+
+                input_graph = extract_graph(input_data, idx)
+                output_graph = extract_graph(output_data, idx)
+                target_graph = extract_graph(target_data, idx)
+                if self.log_img:
+                    visualize_sample(input_graph, output_graph, target_graph, "val")
+        if self.log_img:
+            batch = self.specific_val_data
+            superpixel_pos, superpixel_h = self(batch)
+
+            input_data, output_data, target_data = prepare_sample(batch, superpixel_pos, superpixel_h)
+
+            input_graph = extract_graph(input_data, 0)
+            output_graph = extract_graph(output_data, 0)
+            target_graph = extract_graph(target_data, 0)
+            visualize_sample(input_graph, output_graph, target_graph, "val_specific")
+
 
     def test_step(self, graph, batch_idx):
         graph = graph.to(self.device)
