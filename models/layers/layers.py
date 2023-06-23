@@ -290,6 +290,7 @@ class EGNN_FullLayer_Dojo(tg.nn.MessagePassing):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
+
 class EGNN_FullLayer(tg.nn.MessagePassing):
     def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add"):
         """E(n) Equivariant GNN Layer

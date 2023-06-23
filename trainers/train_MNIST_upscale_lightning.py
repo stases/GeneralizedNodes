@@ -288,7 +288,7 @@ class MNISTSuperpixels(InMemoryDataset):
             torch.save(self.collate(data_list), self.processed_paths[i])
 
 class MNISTSuperpixelsUpscale(pl.LightningModule):
-    def __init__(self, model, data_dir, radius, batch_size, warmup_epochs, subgraph_dict=None, log_img=True, **kwargs):
+    def __init__(self, model, data_dir, radius, batch_size, warmup_epochs, subgraph_dict=None, log_img=False, **kwargs):
         super().__init__()
         self.model = model
         print(self.model)

@@ -964,7 +964,7 @@ class Superpixel_EGNN(nn.Module):
         pos_sub = pos[~batch.ground_node]
 
         for layer_idx in range(self.depth):
-            h_old = h.clone()
+            '''h_old = h.clone()
             h_0 = h
             pos_old = pos.clone()
             h_update, pos_update = self.ground_mps[layer_idx](h, pos, batch.edge_index)
@@ -979,11 +979,17 @@ class Superpixel_EGNN(nn.Module):
             pos = pos_update
             if self.mask:
                 pos[batch.ground_node] = pos_old[batch.ground_node]
-
+            '''
             pos_old = pos.clone()
+
             h_update, pos_update = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
             h = h + h_update if self.residual else h_update
             pos = pos_update
+            # print the difference between the old and new position
+            print('pos diff:', torch.mean(torch.norm(pos_old - pos, dim=1)))
+            # print the old and new position of the first node
+            print('pos:', pos[0], pos_old[0])
+
             if self.mask:
                 pos[batch.ground_node] = pos_old[batch.ground_node]
 
