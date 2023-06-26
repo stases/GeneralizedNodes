@@ -320,12 +320,6 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         superpixel_pos, superpixel_h = self(graph)
 
         # LOSS
-        diff = graph.pos_full - superpixel_pos
-        squared_diff = diff ** 2
-        loss_pos = torch.mean(squared_diff)
-        loss_h = torch.mean(torch.square(graph.x_full - superpixel_h))
-        #loss = loss_pos + loss_h
-        loss = loss_pos
 
         self.current_train_data = {'input': graph,
                              'output_pos': superpixel_pos,
@@ -338,6 +332,14 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         # Pack the positions and the superpixel_h into a tensor [B, N, 2]
         superpixel_pos = torch.stack([superpixel_pos[i] for i in graph.batch])
         true_pos = torch.stack([graph.pos_full[i] for i in graph.batch])
+        diff = superpixel_pos - true_pos
+        squared_diff = diff ** 2
+        #loss_pos = torch.mean(squared_diff)
+        criterion = torch.nn.MSELoss()
+        loss_pos = criterion(superpixel_pos, true_pos)
+        loss_h = torch.mean(torch.square(graph.x_full - superpixel_h))
+        loss = loss_pos
+        #loss = loss_pos + loss_h
         # assert that true pos and superpixel pos have the same shape
         assert superpixel_pos.shape == true_pos.shape
         # LOSS TODO SINKHORN

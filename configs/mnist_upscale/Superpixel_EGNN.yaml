@@ -1,5 +1,5 @@
 model_arch: Superpixel_EGNN
-depth: 4
+depth: 1
 pool: "add"
 only_ground: True
 residual: False

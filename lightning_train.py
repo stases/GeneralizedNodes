@@ -143,12 +143,12 @@ elif trainer_name == "mnist":
 else:
     target_name = "unknown"
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
-#wandb.init(project=trainer_name, name=model_arch)
-#wandb.config.update(config)
-#wandb_logger = WandbLogger()
+wandb.init(project=trainer_name, name=model_arch)
+wandb.config.update(config)
+wandb_logger = WandbLogger()
 checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
-#trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
-trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)
