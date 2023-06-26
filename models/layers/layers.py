@@ -365,7 +365,6 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
             pos_aggr = scatter(pos_diffs, index, dim=self.node_dim, reduce="mean")
 
         nodes_to_upd = torch.unique(index)
-
         msg_aggr = msg_aggr[nodes_to_upd]
 
         if self.update_pos:
@@ -382,7 +381,12 @@ class EGNN_FullLayer(tg.nn.MessagePassing):
         upd_out[nodes_to_upd] = self.mlp_upd(torch.cat([h[nodes_to_upd], msg_aggr], dim=-1))
         if self.update_pos:
             upd_pos = pos
+            #print('pos before is ', pos)
+            #print('pos aggr is ', pos_aggr)
             upd_pos[nodes_to_upd] = pos[nodes_to_upd] + pos_aggr
+            # print the difference
+            #print('pos after is ', upd_pos)
+
         else:
             upd_pos = pos
 

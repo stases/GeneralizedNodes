@@ -159,15 +159,15 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     train_val_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=True, cluster_k=cluster_k)
     # split train into train and val sets by taking the last 10% of the training set
     train_set = train_val_set[:int(len(train_val_set) * 0.9)]
-    train_set = train_set[:1000]
+    train_set = train_set[:1]
     val_set = train_val_set[int(len(train_val_set) * 0.9):]
-    val_set = val_set[:1000]
+    val_set = val_set[:1]
     test_set = MNISTSuperpixels(root=data_dir, transform=transforms, train=False, cluster_k=cluster_k)
     # print which transforms are we using
     print("Transforms: ", transforms)
     #assert len(train_set) + len(val_set) == len(train_val_set)
 
-    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, )
+    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False)
     test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
@@ -336,14 +336,27 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         squared_diff = diff ** 2
         #loss_pos = torch.mean(squared_diff)
         criterion = torch.nn.MSELoss()
-        loss_pos = criterion(superpixel_pos, true_pos)
+        #loss_pos = criterion(superpixel_pos, true_pos)
         loss_h = torch.mean(torch.square(graph.x_full - superpixel_h))
-        loss = loss_pos
+        #loss = loss_pos
+        #print the gradient of the mlp_pos layer
+        #print("MLP POS GRADIENT: ", self.model.sub_mps.mlp_pos[0].weight.grad)
+        #print("MLP H GRADIENT: ", self.model.mlp_h[0].weight.grad)
         #loss = loss_pos + loss_h
         # assert that true pos and superpixel pos have the same shape
         assert superpixel_pos.shape == true_pos.shape
         # LOSS TODO SINKHORN
-        #loss = sinkhorn_loss(superpixel_pos, true_pos)
+
+        loss = sinkhorn_loss(superpixel_pos, true_pos)
+        self.model.manual_backward(loss)
+        print('pos grads: ', self.model.sub_mps[0].mlp_pos[0].weight.grad)
+        # print ALL graidnets of the model
+        for name, param in self.model.named_parameters():
+            # check if they are not None
+            if param.grad is not None:
+                    print(name, param.grad.data.sum())
+
+        print("Sinkhorn loss: ", loss.item())
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
 
@@ -439,8 +452,8 @@ class MNISTSuperpixelsUpscale(pl.LightningModule):
         self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
+        #optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         warmup_epochs = self.warmup_epochs
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)

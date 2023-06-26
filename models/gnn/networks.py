@@ -981,12 +981,18 @@ class Superpixel_EGNN(nn.Module):
                 pos[batch.ground_node] = pos_old[batch.ground_node]
             pos_old = pos.clone()
 
+            pos_before = pos.clone()
             h_update, pos_update = self.sub_mps[layer_idx](h, pos, batch.subgraph_edge_index)
+            #print('pos update is', pos_update)
+            #print('difference is', pos_update-pos)
             h = h + h_update if self.residual else h_update
             pos = pos_update
+            #print('difference is', pos-pos_before)
+
 
             if self.mask:
-                pos[batch.ground_node] = pos_old[batch.ground_node]
+                pass;
+                #pos[batch.ground_node] = pos_old[batch.ground_node]
 
 
         h = self.pred(h)
