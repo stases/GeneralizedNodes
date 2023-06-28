@@ -382,6 +382,7 @@ class EGNN_Full(nn.Module):
             aggr="sum",
             pool="add",
             residual=True,
+            return_pos=False,
             **kwargs
     ):
         """E(n) Equivariant GNN model 
@@ -399,7 +400,7 @@ class EGNN_Full(nn.Module):
         """
         super().__init__()
         # Name of the network
-        self.name = "EGNN"
+        self.name = "EGNN_Full"
 
         # Embedding lookup for initial node features
         self.emb_in = nn.Linear(node_features, hidden_features)
@@ -410,7 +411,7 @@ class EGNN_Full(nn.Module):
             self.convs.append(EGNN_FullLayer(hidden_features, activation, norm, aggr))
 
         # Global pooling/readout function
-        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
 
         # Predictor MLP
         self.pred = torch.nn.Sequential(
@@ -419,11 +420,11 @@ class EGNN_Full(nn.Module):
             torch.nn.Linear(hidden_features, out_features)
         )
         self.residual = residual
-
+        self.return_pos = return_pos
+	
     def forward(self, batch):
-
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
-        pos = batch.pos  # (n, 3)
+        pos = batch.pos.clone()  # (n, 3)
 
         for conv in self.convs:
             # Message passing layer
@@ -434,9 +435,15 @@ class EGNN_Full(nn.Module):
 
             # Update node coordinates (no residual) (n, 3) -> (n, 3)
             pos = pos_update
+        if self.pool is not None:
+            out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        else:
+            out = h
 
-        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
-        return self.pred(out)  # (batch_size, out_features)
+        if self.return_pos:
+            return pos, self.pred(out)
+        else:
+            return self.pred(out)  # (batch_size, out_features)
 
 class EGNN(nn.Module):
     def __init__(
@@ -452,6 +459,7 @@ class EGNN(nn.Module):
             residual=True,
             RFF_dim=None,
             RFF_sigma=None,
+            return_pos=False,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -480,7 +488,7 @@ class EGNN(nn.Module):
             self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
 
         # Global pooling/readout function
-        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
 
         # Predictor MLP
         self.pred = torch.nn.Sequential(
@@ -491,10 +499,9 @@ class EGNN(nn.Module):
         self.residual = residual
 
     def forward(self, batch):
-
         h = self.emb_in(batch.x)  # (n,) -> (n, d)
-        pos = batch.pos  # (n, 3)
-
+        #pos = batch.pos  # (n, 3)
+        pos = batch.pos.clone()
         for conv in self.convs:
             # Message passing layer
             h_update = conv(h, pos, batch.edge_index)
@@ -503,8 +510,11 @@ class EGNN(nn.Module):
             h = h + h_update if self.residual else h_update
 
             # Update node coordinates (no residual) (n, 3) -> (n, 3)
+        out = h
+        if self.pool is not None:
+            out = self.pool(h, batch.batch)
 
-        out = self.pool(h, batch.batch)  # (n, d) -> (batch_size, d)
+        
         return self.pred(out)  # (batch_size, out_features)
 
 class Fractal_EGNN(nn.Module):

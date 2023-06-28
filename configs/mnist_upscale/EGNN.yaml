@@ -1,0 +1,36 @@
+model_arch: EGNN_Full
+depth: 3
+pool: "none"
+return_pos: True
+only_ground: True
+residual: True
+norm: "layer"
+mask: True
+trainer: mnist_upscale
+learning_rate: 0.0008
+RFF_dim: 32
+RFF_sigma: 5
+epochs: 100
+radius: 8
+warmup_epochs: 1
+batch_size: 1
+subgraph_dict:
+  mode: "transformer_3"
+fully_connect: True
+node_features: 4
+hidden_features: 64
+data_dir: "./data/mnist"
+model_dir: "./trained/mnist"
+log_dir: "./logs"
+optimizer:
+  name: Adam
+  kwargs:
+    betas: [0.9, 0.999]
+    eps: 1e-8
+criterion:
+  name: L1Loss
+scheduler:
+  name: CosineAnnealingLR
+  kwargs:
+    T_max: ${epochs}
+device: cuda
