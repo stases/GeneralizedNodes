@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as geom_nn
-from torch_geometric.nn.conv import TransformerConv
+from torch_geometric.nn.conv import TransformerConv, GCNConv
 from utils.tools import catch_lone_sender, fully_connected_edge_index
 from ..layers.layers import FractalMP, MP, EGNNLayer, MultiHeadGATLayer, EGNN_FullLayer, MPNNLayer
 
@@ -191,14 +191,10 @@ class MPNN(nn.Module):
     """ Message Passing Neural Network """
 
     def __init__(self, node_features, edge_features, hidden_features, out_features, depth, aggr="mean",
-                 act=nn.ReLU, pool="add", **kwargs):
-        """
-        Here we choose global_add_pool as our default graph pooling methods,
-        but with the other type of tasks, make sure to try also pooling methods like [global_max_pool, global_mean_pool]
-        to make your network have specific features.
-        """
+                 act=nn.ReLU, pool="add", dropout=0.3, **kwargs):
         super().__init__()
         num_layers = depth
+        self.dropout = nn.Dropout(dropout)  # Dropout layer
         self.embedder = nn.Sequential(nn.Linear(node_features, hidden_features),
                                       act(),
                                       nn.Linear(hidden_features, hidden_features))
@@ -215,7 +211,7 @@ class MPNN(nn.Module):
             layers.append(layer)
         self.layers = nn.ModuleList(layers)
 
-        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool}[pool]
+        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
 
         self.head = nn.Sequential(nn.Linear(hidden_features, hidden_features),
                                   act(),
@@ -226,9 +222,11 @@ class MPNN(nn.Module):
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
         x = self.embedder(x)
+        x = self.dropout(x)  # Apply dropout to node features
 
         for layer in self.layers:
             x = layer(x, edge_index, edge_attr)
+            x = self.dropout(x)  # Apply dropout after each layer
 
         if self.pooler:
             x = self.pooler(x, batch.batch)
@@ -369,6 +367,114 @@ class Transformer_MPNN(nn.Module):
             h = self.pool(h, batch.batch)
             h = self.head(h)
             return h
+
+class Simple_MPNN(nn.Module):
+    """ Message Passing Neural Network """
+
+    def __init__(self, node_features, hidden_features, out_features, depth, aggr="mean",
+                 act=nn.ReLU, pool="add", dropout=0.3, **kwargs):
+        super().__init__()
+        self.name = 'Simple_Transformer_MPNN'
+        num_layers = depth
+        self.dropout = nn.Dropout(dropout)  # Dropout layer
+        self.embedder = nn.Identity()
+        self.act = act()
+        layers = []
+        for i in range(num_layers):
+            layer = GCNConv(node_features, hidden_features)
+            layers.append(layer)
+            node_features = hidden_features
+        self.layers = nn.ModuleList(layers)
+
+        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
+
+        self.head = nn.Linear(hidden_features, out_features)
+
+    def forward(self, batch):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+        x = self.embedder(x)
+        x = self.dropout(x)  # Apply dropout to node features
+
+        for layer in self.layers:
+            x = layer(x, edge_index)
+            x = self.act(x)
+            x = self.dropout(x)  # Apply dropout after each layer
+
+        if self.pooler:
+            x = self.pooler(x, batch.batch)
+
+        x = self.head(x)
+        return x
+
+class Simple_Transformer_MPNN(nn.Module):
+    """ Message Passing Neural Network """
+
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth, aggr="mean",
+                 act=nn.ReLU, pool="add", dropout=0.3, mask=True, **kwargs):
+        super().__init__()
+        self.name = 'Simple_MPNN'
+        num_layers = depth
+        self.depth = depth
+        self.mask = mask
+        self.dropout = nn.Dropout(dropout)  # Dropout layer
+        self.embedder = nn.Linear(node_features, hidden_features)
+        self.activation = act()
+        print('Dropout is: ', dropout)
+        print("Model name is: ", self.name)
+        self.ground_mps = []
+        self.ground_to_sub_mps = []
+        self.sub_mps = []
+        self.sub_to_ground_mps = []
+        for i in range(num_layers):
+            #layer = GCNConv(node_features, hidden_features)
+            self.ground_mps.append(GCNConv(hidden_features, hidden_features))
+            self.ground_to_sub_mps.append(GCNConv(hidden_features, hidden_features))
+            self.sub_mps.append(GCNConv(hidden_features, hidden_features))
+            self.sub_to_ground_mps.append(GCNConv(hidden_features, hidden_features))
+
+        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
+
+        self.head = nn.Linear(hidden_features, out_features)
+
+    def forward(self, batch):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+        x = self.embedder(x)
+        x = self.dropout(x)  # Apply dropout to node features
+
+        for layer_idx in range(self.depth):
+            x_backup = x[~batch.ground_node]
+            x = self.ground_mps[layer_idx](x, edge_index)
+            x = self.activation(x)
+            x = self.dropout(x)  # Apply dropout after each layer
+            x[~batch.ground_node] = x_backup
+
+            x_backup = x[batch.ground_node]
+            x = self.ground_to_sub_mps[layer_idx](x, batch.ground_sub_edge_index)
+            x = self.activation(x)
+            x = self.dropout(x)  # Apply dropout after each layer
+            x[batch.ground_node] = x_backup
+
+            x_backup = x[batch.ground_node]
+            x = self.sub_mps[layer_idx](x, batch.subnode_node_index)
+            x = self.activation(x)
+            x = self.dropout(x)  # Apply dropout after each layer
+            x[batch.ground_node] = x_backup
+
+            x_backup = x[~batch.ground_node]
+            x = self.sub_to_ground_mps[layer_idx](x, batch.subnode_ground_edge_index)
+            x = self.activation(x)
+            x = self.dropout(x)  # Apply dropout after each layer
+            x[~batch.ground_node] = x_backup
+
+        if self.pooler:
+            x = self.pooler(x, batch.batch)
+
+        x = self.head(x)
+        return x
 
 class EGNN_Full(nn.Module):
     def __init__(
