@@ -1,5 +1,6 @@
 import sys
 from datetime import datetime
+import argparse
 
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -16,6 +17,7 @@ from trainers.train_md17_lightning import MD17Model
 from trainers.train_qm9_lightning import QM9Model
 from trainers.train_MNIST_lightning import MNISTModel
 from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
+from trainers.train_supervised_qm9 import SupervisedQM9Model
 #####################
 #  Helper functions #
 MODEL_MAP = {
@@ -23,9 +25,11 @@ MODEL_MAP = {
     "net": Net,
     "transformernet": TransformerNet,
     "MPNN": MPNN,
+    "RCGNN": RCGNN,
     "Transformer_MPNN": Transformer_MPNN,
     "EGNN": EGNN,
     "EGNN_Full": EGNN_Full,
+    "RelEGNN": RelEGNN,
     "Fractal_EGNN": Fractal_EGNN,
     "Fractal_EGNN_v2": Fractal_EGNN_v2,
     "Transformer_EGNN": Transformer_EGNN,
@@ -36,6 +40,7 @@ MODEL_MAP = {
 
 TRAINER_MAP = {
     "qm9": QM9Model,
+    "supervised_qm9": SupervisedQM9Model,
     "md17": MD17Model,
     "mnist": MNISTModel,
     "mnist_upscale": MNISTSuperpixelsUpscale,
@@ -71,6 +76,13 @@ DEVICE_MAP = {
 
 #####################
 #  Config loading    #
+# Set up argparse
+parser = argparse.ArgumentParser(description='Train using configuration file')
+parser.add_argument('config_file', help='Path to the configuration file')
+parser.add_argument('--LABEL_INDEX', type=int, help='Override the LABEL_INDEX in config')
+
+args = parser.parse_args()
+
 config_file = sys.argv[1]
 with open(config_file, "r") as f:
     config = yaml.safe_load(f)
@@ -135,7 +147,15 @@ model = model.to(device)
 #####################
 #  Training loop    #
 if trainer_name == "qm9":
+    if args.LABEL_INDEX is not None:
+        config["LABEL_INDEX"] = args.LABEL_INDEX
     target_name = str(config['LABEL_INDEX'])
+
+elif trainer_name == "supervised_qm9":
+    if args.LABEL_INDEX is not None:
+        config["LABEL_INDEX"] = args.LABEL_INDEX
+    target_name = str(config['LABEL_INDEX'])
+
 elif trainer_name == "md17":
     target_name = config['name']
 elif trainer_name == "mnist":
@@ -143,12 +163,12 @@ elif trainer_name == "mnist":
 else:
     target_name = "unknown"
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
-#wandb.init(project=trainer_name, name=model_arch)
-#wandb.config.update(config)
-#wandb_logger = WandbLogger()
+wandb.init(project=trainer_name, name=model_arch)
+wandb.config.update(config)
+wandb_logger = WandbLogger()
 checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
-#trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
-trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)

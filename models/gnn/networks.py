@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as tg
 import torch_geometric.nn as geom_nn
-from torch_geometric.nn.conv import TransformerConv, GCNConv
+from torch_geometric.nn.conv import TransformerConv, GCNConv, RGCNConv
 from utils.tools import catch_lone_sender, fully_connected_edge_index
-from ..layers.layers import FractalMP, MP, EGNNLayer, MultiHeadGATLayer, EGNN_FullLayer, MPNNLayer
+from ..layers.layers import FractalMP, MP, EGNNLayer, MultiHeadGATLayer, EGNN_FullLayer, MPNNLayer, RelEGNNLayer
 
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
@@ -226,6 +226,57 @@ class MPNN(nn.Module):
 
         for layer in self.layers:
             x = layer(x, edge_index, edge_attr)
+            x = self.dropout(x)  # Apply dropout after each layer
+
+        if self.pooler:
+            x = self.pooler(x, batch.batch)
+
+        x = self.head(x)
+        return x
+
+class RCGNN(nn.Module):
+    """ Message Passing Neural Network """
+
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth, aggr="mean",
+                 act=nn.ReLU, pool="add", dropout=0.3, no_relations=False, **kwargs):
+        super().__init__()
+        num_layers = depth
+        self.no_relations = no_relations
+        print("No relations: ", self.no_relations)
+        if self.no_relations:
+            num_relations = 1
+        self.dropout = nn.Dropout(dropout)  # Dropout layer
+        self.embedder = nn.Sequential(nn.Linear(node_features, hidden_features),
+                                      act(),
+                                      nn.Linear(hidden_features, hidden_features))
+        self.activation = act()  # Activation function for use after RGCNConv layers
+
+        layers = []
+        for i in range(num_layers):
+            layer = RGCNConv(hidden_features, hidden_features, num_relations=edge_features)
+            layers.append(layer)
+        self.layers = nn.ModuleList(layers)
+
+        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
+
+        self.head = nn.Sequential(nn.Linear(hidden_features, hidden_features),
+                                  act(),
+                                  nn.Linear(hidden_features, out_features))
+
+    def forward(self, batch):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr.argmax(dim=-1)
+        if self.no_relations:
+            edge_attr = torch.zeros(edge_index.shape[1], dtype=torch.long, device=x.device)
+        x = self.embedder(x)
+        x = self.dropout(x)  # Apply dropout to node features
+
+        for i, layer in enumerate(self.layers):
+            x = layer(x, edge_index, edge_attr)
+            # Add ReLU activation for all layers except the last one
+            if i != len(self.layers) - 1:
+                x = self.activation(x)
             x = self.dropout(x)  # Apply dropout after each layer
 
         if self.pooler:
@@ -623,6 +674,79 @@ class EGNN(nn.Module):
         
         return self.pred(out)  # (batch_size, out_features)
 
+
+class RelEGNN(nn.Module):
+    def __init__(
+            self,
+            depth,
+            hidden_features,
+            node_features,
+            out_features,
+            num_relations,
+            norm,
+            activation="swish",
+            aggr="sum",
+            pool="add",
+            residual=True,
+            RFF_dim=None,
+            RFF_sigma=None,
+            return_pos=False,
+            **kwargs
+    ):
+        """E(n) Equivariant GNN model
+
+        Args:
+            depth: (int) - number of message passing layers
+            hidden_features: (int) - hidden dimension
+            node_features: (int) - initial node feature dimension
+            out_features: (int) - output number of classes
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+            pool: (str) - global pooling function (sum/mean)
+            residual: (bool) - whether to use residual connections
+        """
+        super().__init__()
+        # Name of the network
+        self.name = "RelEGNN"
+
+        # Embedding lookup for initial node features
+        self.emb_in = nn.Linear(node_features, hidden_features)
+
+        # Stack of GNN layers
+        self.convs = torch.nn.ModuleList()
+        for layer in range(depth):
+            self.convs.append(RelEGNNLayer(hidden_features, num_relations, activation, norm, aggr, RFF_dim, RFF_sigma))
+
+        # Global pooling/readout function
+        self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
+
+        # Predictor MLP
+        self.pred = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_features, out_features)
+        )
+        self.residual = residual
+
+    def forward(self, batch):
+        h = self.emb_in(batch.x)  # (n,) -> (n, d)
+        # pos = batch.pos  # (n, 3)
+        pos = batch.pos.clone()
+        edge_type = batch.edge_attr.argmax(dim=-1)
+        for conv in self.convs:
+            # Message passing layer
+            h_update = conv(h, pos, batch.edge_index, edge_type)
+
+            # Update node features (n, d) -> (n, d)
+            h = h + h_update if self.residual else h_update
+
+            # Update node coordinates (no residual) (n, 3) -> (n, 3)
+        out = h
+        if self.pool is not None:
+            out = self.pool(h, batch.batch)
+
+        return self.pred(out)  # (batch_size, out_features)
 class Fractal_EGNN(nn.Module):
     def __init__(
             self,

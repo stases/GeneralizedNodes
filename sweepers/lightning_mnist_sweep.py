@@ -106,7 +106,7 @@ def train():
                 model = Fractal_EGNN(**config)
             elif config['model_type'] == 'fractal_egnn_v2':
                 model = Fractal_EGNN_v2(**config)
-        checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", 'MNIST', 'Transformer'),
+        checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("../trained/", 'MNIST', 'Transformer'),
                                               filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss',
                                               mode='min')
 

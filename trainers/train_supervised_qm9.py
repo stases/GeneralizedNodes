@@ -10,6 +10,7 @@ import pytorch_lightning as pl
 import wandb
 import torchmetrics
 from torch_geometric.datasets import QM9
+from utils.supervised_qm9.QM9_hypernode import QM9_Hypernodes
 
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):
@@ -34,8 +35,8 @@ def compute_mean_mad(train_loader, label_property):
     mad = torch.mean(ma)
     return meann, mad
 
-def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
-    dataset = QM9(data_dir, transform=transform)
+def get_qm9_hypernodes(data_dir, mode, transform=None, device="cuda"):
+    dataset = QM9_Hypernodes(data_dir, mode=mode)
     dataset.data = dataset.data.to(device)
 
     len_train = 100_000
@@ -51,6 +52,8 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
 
 def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False, subgraph_dict=None):
     transforms = []
+    #TODO: Do not make this hardcoded
+    mode = "en_ee_nn"
     if fully_connect:
         transforms.append(Fully_Connected_Graph())
     if subgraph_dict is not None:
@@ -60,7 +63,7 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
         transform = T.Compose(transforms)
     else:
         transform = None
-    train, valid, test = get_qm9(data_dir, device=device, LABEL_INDEX=LABEL_INDEX, transform=transform)
+    train, valid, test = get_qm9_hypernodes(data_dir, mode, device=device, transform=transform)
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
@@ -68,7 +71,7 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
 
 
 
-class QM9Model(pl.LightningModule):
+class SupervisedQM9Model(pl.LightningModule):
     def __init__(self, model, data_dir, LABEL_INDEX, batch_size, warmup_epochs, fully_connect, subgraph_dict=None, **kwargs):
         super().__init__()
         self.model = model

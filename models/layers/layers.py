@@ -290,7 +290,6 @@ class EGNN_FullLayer_Dojo(tg.nn.MessagePassing):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
-
 class EGNN_FullLayer(tg.nn.MessagePassing):
     def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add"):
         """E(n) Equivariant GNN Layer
@@ -492,6 +491,94 @@ class EGNNLayer(tg.nn.MessagePassing):
         msg = torch.cat([h_i, h_j, dists], dim=-1)
         msg = self.mlp_msg(msg)
         # Scale magnitude of displacement vector
+        return msg
+
+    '''def aggregate(self, inputs, index):
+        msgs = inputs
+        # Aggregate messages
+        msg_aggr = scatter(msgs, index, dim=self.node_dim, reduce=self.aggr)
+        # Aggregate displacement vectors
+        return msg_aggr'''
+
+    def update(self, aggr_out, h):
+        msg_aggr = aggr_out
+        upd_out = self.mlp_upd(torch.cat([h, msg_aggr], dim=-1))
+        if self.mask is not None:
+            upd_out = torch.where(self.mask.unsqueeze(-1), upd_out, h)
+        return upd_out
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(emb_dim={self.emb_dim}, aggr={self.aggr})"
+
+class RelEGNNLayer(tg.nn.MessagePassing):
+    def __init__(self, emb_dim, num_relations, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None):
+        """E(n) Equivariant GNN Layer
+
+        Paper: E(n) Equivariant Graph Neural Networks, Satorras et al.
+
+        Args:
+            emb_dim: (int) - hidden dimension `d`
+            activation: (str) - non-linearity within MLPs (swish/relu)
+            norm: (str) - normalisation layer (layer/batch)
+            aggr: (str) - aggregation function `\oplus` (sum/mean/max)
+        """
+        # Set the aggregation function
+        super().__init__(aggr=aggr)
+
+        self.emb_dim = emb_dim
+        self.activation = {"swish": nn.SiLU(), "relu": nn.ReLU()}[activation]
+        self.norm = {"layer": torch.nn.LayerNorm,
+                     "batch": torch.nn.BatchNorm1d,
+                     "none": nn.Identity}[norm]
+        self.RFF_dim = RFF_dim
+        self.RFF_sigma = RFF_sigma
+        self.mask = mask
+        # MLP `\psi_h` for computing messages `m_ij`
+        self.mlps_msg = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(2 * emb_dim + 1 if self.RFF_dim is None else 2 * emb_dim + RFF_dim, emb_dim),
+                self.norm(emb_dim),
+                self.activation,
+                nn.Linear(emb_dim, emb_dim),
+                self.norm(emb_dim),
+                self.activation,
+            )
+            for _ in range(num_relations)
+        ])
+
+        # MLP `\phi` for computing updated node features `h_i^{l+1}`
+        self.mlp_upd = nn.Sequential(
+            nn.Linear(2 * emb_dim, emb_dim),
+            self.norm(emb_dim),
+            self.activation,
+            nn.Linear(emb_dim, emb_dim),
+            self.norm(emb_dim) if norm != "none" else nn.Identity(),
+            self.activation,
+        )
+        if self.RFF_dim is not None:
+            self.RFF = RFF(1, RFF_dim, RFF_sigma)
+
+    def forward(self, h, pos, edge_index, edge_type, mask=None):
+        """
+        Args:
+            # ... (rest of the arguments)
+            edge_type: (e) - edge type for each edge in edge_index
+        """
+        self.mask = mask
+        out = self.propagate(edge_index, h=h, pos=pos, edge_type=edge_type, mask=mask)
+        return out
+
+    def message(self, h_i, h_j, pos_i, pos_j, edge_type):
+        pos_diff = pos_i - pos_j
+        dists = torch.norm(pos_diff, dim=-1).unsqueeze(1)
+        if self.RFF_dim is not None:
+            dists = self.RFF(dists)
+        msg_inputs = torch.cat([h_i, h_j, dists], dim=-1)
+
+        # Vectorized application of the correct MLP based on edge type
+        msg = torch.stack([mlp(msg_inputs) for mlp in self.mlps_msg], dim=0)  # Stack outputs
+        msg = msg[edge_type, torch.arange(edge_type.size(0))]  # Select the right output for each edge
+
         return msg
 
     '''def aggregate(self, inputs, index):
