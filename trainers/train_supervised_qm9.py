@@ -64,9 +64,9 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
     else:
         transform = None
     train, valid, test = get_qm9_hypernodes(data_dir, mode, device=device, transform=transform)
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=16)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=16)
+    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=16)
     return train_loader, valid_loader, test_loader
 
 
@@ -135,8 +135,8 @@ class SupervisedQM9Model(pl.LightningModule):
         self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
         
     def configure_optimizers(self):
-        #optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        #optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
         #optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate)
         warmup_epochs = self.warmup_epochs
         scheduler = CosineWarmupScheduler(optimizer, warmup=warmup_epochs, max_iters=self.trainer.max_epochs)
