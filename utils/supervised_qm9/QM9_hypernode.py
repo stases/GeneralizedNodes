@@ -7,10 +7,8 @@ from torch_geometric.data import (
     download_url,
     extract_zip,
 )
-import sys
-sys.path.append("../")
-from utils.supervised_qm9.hypernodes import *
 
+from utils.supervised_qm9.hypernodes import *
 
 atom_info = {'atom_list': [('H', 1), ('C', 4), ('N', 5), ('O', 6), ('F', 7)],
              'num_atom_types': 5,

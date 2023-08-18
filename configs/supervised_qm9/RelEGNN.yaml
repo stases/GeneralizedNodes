@@ -1,5 +1,5 @@
 model_arch: RelEGNN
-depth: 5
+depth: 7
 pool: "add"
 sub_aggr: "mean"
 only_ground: True
@@ -7,11 +7,11 @@ residual: True
 norm: "layer"
 mask: True
 trainer: supervised_qm9
-learning_rate: 0.0002
+learning_rate: 0.0003
 RFF_dim: null
 RFF_sigma: null
-epochs: 30
-warmup_epochs: 3
+epochs: 800
+warmup_epochs: 5
 batch_size: 96
 fully_connect: False
 hidden_features: 64

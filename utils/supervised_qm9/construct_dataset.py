@@ -1,4 +1,4 @@
-from QM9_hypernode import QM9_Hypernodes
+from utils.supervised_qm9.QM9_hypernode import QM9_Hypernodes
 import argparse
 
 if __name__ == "__main__":
@@ -8,7 +8,7 @@ if __name__ == "__main__":
     # Model hyperparameters
     parser.add_argument(
         "--path",
-        default='../../data',
+        default='../../data/qm9/',
         type=str,
         help="Choose the path of the original raw QM9 dataset.",
     )

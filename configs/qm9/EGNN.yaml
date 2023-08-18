@@ -1,5 +1,5 @@
 model_arch: EGNN
-depth: 5
+depth: 7
 pool: "add"
 sub_aggr: "mean"
 only_ground: True
@@ -7,11 +7,11 @@ residual: True
 norm: "layer"
 mask: True
 trainer: qm9
-learning_rate: 0.0002
+learning_rate: 0.0003
 RFF_dim: null
 RFF_sigma: null
-epochs: 1600
-warmup_epochs: 10
+epochs: 800
+warmup_epochs: 5
 batch_size: 96
 fully_connect: True
 hidden_features: 64
