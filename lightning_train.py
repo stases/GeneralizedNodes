@@ -1,7 +1,7 @@
 import sys
 from datetime import datetime
 import argparse
-
+import re
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 import yaml
@@ -184,11 +184,14 @@ trainer.fit(lightning_model)
 
 # Load the best model from checkpoint
 best_model_name = checkpoint_callback.best_model_path.split("/")[-1]
-
+match = re.search(r'epoch=\d+', best_model_name)
+if match:
+    epoch_string = match.group(0)
+else:
+    epoch_string = None
 # Extract epoch and loss from the best model's name
-epoch_info, loss_info = best_model_name.split("-")
 
-print(f"Testing using the model from epoch {epoch_info} with validation loss {loss_info}")
+print(f"Testing using the model from epoch {epoch_string}.")
 
 # Test using the best model
 trainer.test(ckpt_path="best")
