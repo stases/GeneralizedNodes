@@ -10,8 +10,8 @@ trainer: qm9
 learning_rate: 0.0002
 RFF_dim: null
 RFF_sigma: null
-epochs: 30
-warmup_epochs: 3
+epochs: 2
+warmup_epochs: 1
 batch_size: 96
 fully_connect: True
 hidden_features: 64

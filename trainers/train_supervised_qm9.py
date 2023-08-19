@@ -37,7 +37,7 @@ def compute_mean_mad(train_loader, label_property):
 
 def get_qm9_hypernodes(data_dir, mode, transform=None, device="cuda"):
     dataset = QM9_Hypernodes(data_dir, mode=mode)
-    dataset.data = dataset.data.to(device)
+    dataset = dataset.shuffle()
 
     len_train = 100_000
     len_test = 10_000

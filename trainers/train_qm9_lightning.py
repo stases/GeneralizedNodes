@@ -38,6 +38,7 @@ def compute_mean_mad(train_loader, label_property):
 
 def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     dataset = QM9(data_dir, transform=transform)
+    dataset = dataset.shuffle()
     #dataset.data = dataset.data.to(device)
 
     len_train = 100_000
@@ -61,7 +62,7 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
         transform = T.Compose(transforms)
     else:
         transform = None
-    num_workers = 2
+    num_workers = 8
     train, valid, test = get_qm9(data_dir, device=device, LABEL_INDEX=LABEL_INDEX, transform=transform)
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
     valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)

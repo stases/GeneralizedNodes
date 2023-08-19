@@ -151,18 +151,23 @@ if trainer_name == "qm9":
     if args.LABEL_INDEX is not None:
         config["LABEL_INDEX"] = args.LABEL_INDEX
     target_name = str(config['LABEL_INDEX'])
+    run_name = model_arch + "_" + "target" + "_" + target_name
 
 elif trainer_name == "supervised_qm9":
     if args.LABEL_INDEX is not None:
         config["LABEL_INDEX"] = args.LABEL_INDEX
     target_name = str(config['LABEL_INDEX'])
+    run_name = model_arch + "_" + "target" + "_" + target_name
 
 elif trainer_name == "md17":
     target_name = config['name']
+    run_name = model_arch + "_" + target_name
 elif trainer_name == "mnist":
     target_name = "mnist"
+    run_name = model_arch + "_" + target_name
 else:
     target_name = "unknown"
+    run_name = trainer_name + "_" + target_name
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
 
 no_wandb = args.no_wandb
@@ -170,15 +175,22 @@ checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_n
 if no_wandb:
     trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 else:
-    wandb.init(project=trainer_name, name=model_arch)
+    wandb.init(project=trainer_name, name=run_name)
     wandb.config.update(config)
     wandb_logger = WandbLogger()
     trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
-trainer.test(lightning_model)
-# get the name of the best model
-best_model_name = checkpoint_callback.best_model_path.split("/")[-1]
-torch.save(config, os.path.join("trained/", trainer_name, target_name, model_arch, best_model_name + ".yaml"))
 
+# Load the best model from checkpoint
+best_model_name = checkpoint_callback.best_model_path.split("/")[-1]
+
+# Extract epoch and loss from the best model's name
+epoch_info, loss_info = best_model_name.split("-")
+
+print(f"Testing using the model from epoch {epoch_info} with validation loss {loss_info}")
+
+# Test using the best model
+trainer.test(ckpt_path="best")
+torch.save(config, os.path.join("trained/", trainer_name, target_name, model_arch, best_model_name + ".yaml"))
 #####################
