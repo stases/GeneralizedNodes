@@ -16,7 +16,7 @@ from trainers.train_md17 import train_md17_model
 from trainers.train_md17_lightning import MD17Model
 from trainers.train_qm9_lightning import QM9Model
 from trainers.train_MNIST_lightning import MNISTModel
-from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
+#from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
 from trainers.train_supervised_qm9 import SupervisedQM9Model
 #####################
 #  Helper functions #
@@ -43,7 +43,7 @@ TRAINER_MAP = {
     "supervised_qm9": SupervisedQM9Model,
     "md17": MD17Model,
     "mnist": MNISTModel,
-    "mnist_upscale": MNISTSuperpixelsUpscale,
+    "mnist_upscale": None,
     # Add more trainers here
 }
 
