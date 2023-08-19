@@ -63,12 +63,12 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
         transform = T.Compose(transforms)
     else:
         transform = None
+    num_workers = 8
     train, valid, test = get_qm9_hypernodes(data_dir, mode, device=device, transform=transform)
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=16)
-    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=16)
-    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=16)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
     return train_loader, valid_loader, test_loader
-
 
 
 class SupervisedQM9Model(pl.LightningModule):

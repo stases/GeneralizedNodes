@@ -80,6 +80,7 @@ DEVICE_MAP = {
 parser = argparse.ArgumentParser(description='Train using configuration file')
 parser.add_argument('config_file', help='Path to the configuration file')
 parser.add_argument('--LABEL_INDEX', type=int, help='Override the LABEL_INDEX in config')
+parser.add_argument('--no_wandb', action='store_true', help='Disable wandb logging')
 
 args = parser.parse_args()
 
@@ -163,12 +164,16 @@ elif trainer_name == "mnist":
 else:
     target_name = "unknown"
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
-wandb.init(project=trainer_name, name=model_arch)
-wandb.config.update(config)
-wandb_logger = WandbLogger()
+
+no_wandb = args.no_wandb
 checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
-trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
-#trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+if no_wandb:
+    trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
+else:
+    wandb.init(project=trainer_name, name=model_arch)
+    wandb.config.update(config)
+    wandb_logger = WandbLogger()
+    trainer = pl.Trainer(max_epochs=epochs, logger=wandb_logger, accelerator='gpu', gradient_clip_val=1.0, callbacks=[checkpoint_callback])
 lightning_model = trainer_class(model, **config)
 trainer.fit(lightning_model)
 trainer.test(lightning_model)

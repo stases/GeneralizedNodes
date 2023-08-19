@@ -11,6 +11,8 @@ import wandb
 import torchmetrics
 from torch_geometric.datasets import QM9
 
+_ = torch.cuda.current_device()
+
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):
         self.warmup = warmup
@@ -36,7 +38,7 @@ def compute_mean_mad(train_loader, label_property):
 
 def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     dataset = QM9(data_dir, transform=transform)
-    dataset.data = dataset.data.to(device)
+    #dataset.data = dataset.data.to(device)
 
     len_train = 100_000
     len_test = 10_000
@@ -45,7 +47,6 @@ def get_qm9(data_dir, device="cuda", LABEL_INDEX = 7, transform=None):
     valid = dataset[len_train + len_test:]
     test = dataset[len_train : len_train + len_test]
     assert len(dataset) == len(train) + len(valid) + len(test)
-
 
     return train, valid, test
 
@@ -60,10 +61,12 @@ def get_datasets(data_dir, device, LABEL_INDEX, batch_size, fully_connect=False,
         transform = T.Compose(transforms)
     else:
         transform = None
+    num_workers = 2
     train, valid, test = get_qm9(data_dir, device=device, LABEL_INDEX=LABEL_INDEX, transform=transform)
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    test_loader = DataLoader(test, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
     return train_loader, valid_loader, test_loader
 
 
