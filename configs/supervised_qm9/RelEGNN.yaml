@@ -1,5 +1,5 @@
 model_arch: RelEGNN
-depth: 7
+depth: 5
 pool: "add"
 sub_aggr: "mean"
 only_ground: False
