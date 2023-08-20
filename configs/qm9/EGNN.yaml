@@ -7,14 +7,14 @@ residual: True
 norm: "layer"
 mask: True
 trainer: qm9
-learning_rate: 0.0003
+learning_rate: 0.0005
 RFF_dim: null
 RFF_sigma: null
 epochs: 800
 warmup_epochs: 5
 batch_size: 96
 fully_connect: True
-hidden_features: 64
+hidden_features: 128
 subgraph_dict: null
 node_features: 11
 LABEL_INDEX: 7

@@ -18,6 +18,12 @@ from trainers.train_qm9_lightning import QM9Model
 from trainers.train_MNIST_lightning import MNISTModel
 #from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
 from trainers.train_supervised_qm9 import SupervisedQM9Model
+
+SEED = 42
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+pl.seed_everything(SEED)
+
 #####################
 #  Helper functions #
 MODEL_MAP = {

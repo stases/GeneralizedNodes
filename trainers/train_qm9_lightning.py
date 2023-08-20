@@ -94,7 +94,6 @@ class QM9Model(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         graph = batch.to(self.device)
         graph.x = graph.x.float()
-
         target = batch.y[:, self.LABEL_INDEX]
         out = self.model(graph).squeeze()
         loss = self.criterion(out, (target-self.mean)/self.mad)
