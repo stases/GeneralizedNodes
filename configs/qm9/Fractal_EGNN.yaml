@@ -1,12 +1,12 @@
-model_arch: Transformer_EGNN_v2
-depth: 3
+model_arch: Fractal_EGNN_v2
+depth: 2
 ascend_depth: 0
 num_heads: 1
 num_ascend_heads: 0
 pool: "add"
 sub_aggr: "add"
 only_ground: False
-only_sub: True
+only_sub: False
 residual: True
 norm: "layer"
 mask: True
@@ -19,8 +19,8 @@ warmup_epochs: 20
 batch_size: 96
 fully_connect: True
 subgraph_dict:
-  mode: "transformer_4"
-node_features: 15
+  mode: "fractal"
+node_features: 11
 LABEL_INDEX: 7
 edge_features: 0
 hidden_features: 128

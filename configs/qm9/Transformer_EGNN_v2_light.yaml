@@ -1,7 +1,7 @@
 model_arch: Transformer_EGNN_v2
-depth: 2
+depth: 4
 ascend_depth: 0
-num_heads: 2
+num_heads: 1
 num_ascend_heads: 0
 pool: "add"
 sub_aggr: "add"
@@ -11,19 +11,19 @@ residual: True
 norm: "layer"
 mask: True
 trainer: qm9
-learning_rate: 0.03
+learning_rate: 0.0005
 RFF_dim: null
 RFF_sigma: null
-epochs: 11
-warmup_epochs: 50
-batch_size: 32
+epochs: 1300
+warmup_epochs: 20
+batch_size: 96
 fully_connect: True
 subgraph_dict:
-  mode: "transformer_6"
-node_features: 17
+  mode: "transformer_4"
+node_features: 15
 LABEL_INDEX: 7
 edge_features: 0
-hidden_features: 64
+hidden_features: 128
 out_features: 1
 data_dir: "./data/qm9"
 model_dir: "./trained/qm9"
