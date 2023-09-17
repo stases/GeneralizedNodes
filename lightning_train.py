@@ -87,6 +87,8 @@ parser = argparse.ArgumentParser(description='Train using configuration file')
 parser.add_argument('config_file', help='Path to the configuration file')
 parser.add_argument('--LABEL_INDEX', type=int, help='Override the LABEL_INDEX in config')
 parser.add_argument('--no_wandb', action='store_true', help='Disable wandb logging')
+parser.add_argument('--name', type=str, help='Override the name in config')
+parser.add_argument('--node_features', type=int, help='Override the node_features in config')
 
 args = parser.parse_args()
 
@@ -140,18 +142,6 @@ with open(f"{log_dir}/{config['model_name']}.yaml", "w") as f:
 #####################
 
 #####################
-#  Model loading     #
-# Load the model class or function based on the model_arch key
-model_class = MODEL_MAP.get(model_arch, None)
-if model_class is None:
-    raise ValueError(f"Invalid model_arch value: {model_arch}")
-
-# Instantiate the model using kwargs from the YAML configuration file
-model = model_class(**config)
-model = model.to(device)
-#####################
-
-#####################
 #  Training loop    #
 if trainer_name == "qm9":
     if args.LABEL_INDEX is not None:
@@ -166,8 +156,13 @@ elif trainer_name == "supervised_qm9":
     run_name = model_arch + "_" + "target" + "_" + target_name
 
 elif trainer_name == "md17":
+    if args.name is not None:
+        config["name"] = args.name
+    if args.node_features is not None:
+        config["node_features"] = args.node_features
     target_name = config['name']
     run_name = model_arch + "_" + target_name
+
 elif trainer_name == "mnist":
     target_name = "mnist"
     run_name = model_arch + "_" + target_name
@@ -176,6 +171,19 @@ else:
     run_name = trainer_name + "_" + target_name
 print(f"Training {model_arch} on {trainer_name} dataset. Run ID: {config['run_id']}.")
 
+#####################
+#  Model loading     #
+# Load the model class or function based on the model_arch key
+model_class = MODEL_MAP.get(model_arch, None)
+if model_class is None:
+    raise ValueError(f"Invalid model_arch value: {model_arch}")
+
+# Instantiate the model using kwargs from the YAML configuration file
+model = model_class(**config)
+model = model.to(device)
+#####################
+
+#####################
 no_wandb = args.no_wandb
 checkpoint_callback = ModelCheckpoint(dirpath=os.path.join("trained/", trainer_name, target_name, model_arch), filename='{epoch:02d}-{val_loss:.2f}', save_top_k=3, monitor='val_loss', mode='min')
 if no_wandb:

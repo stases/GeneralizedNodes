@@ -6,7 +6,7 @@ norm: "layer"
 masking: False
 trainer: md17
 learning_rate: 0.0005
-epochs: 800
+epochs: 1200
 warmup_epochs: 50
 batch_size: 4
 subgraph_dict: null
@@ -15,7 +15,7 @@ RFF_sigma: 10.0
 fully_connect: True
 node_features: 9
 Z_ONE_HOT_DIM: 11
-name: "benzene CCSD(T)"
+name: "malonaldehyde CCSD(T)"
 EDGE_ATTR_DIM: 4
 edge_features: 0
 hidden_features: 48

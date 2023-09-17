@@ -37,8 +37,8 @@ def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
     train, valid = dataset[:950], dataset[950:1000]
     test = MD17(root=data_dir, name=name, train=False, transform=transform)
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True)
-    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=4)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=4)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
     return train_loader, valid_loader, test_loader
 
@@ -71,11 +71,13 @@ class MD17Model(pl.LightningModule):
         self.warmup_epochs = warmup_epochs
         self.batch_size = batch_size
         self.weight = weight
+        #TODO: Not have this fixed
+        self.weight = 1000.0
         self.num_nodes = get_num_nodes(self.train_dataloader())
         print("Number of nodes", self.num_nodes)
-        #self.weight = 1000.0
+        #self.weight = self.num_nodes ** 2 if self.weight is None else self.weight
+
         self.repeats = 20
-        self.weight = self.num_nodes ** 2 if self.weight is None else self.weight
         self.learning_rate = kwargs['learning_rate']
         self.val_loss = torch.tensor(float('inf'))  # Initialize with a large value
 
@@ -145,8 +147,8 @@ class MD17Model(pl.LightningModule):
         return loss
 
     def on_train_epoch_end(self):
-        self.log("Energy train MAE", self.energy_train_metric, prog_bar=True)
-        self.log("Force train MAE", self.force_train_metric, prog_bar=True)
+        self.log("Energy train MAE", self.energy_train_metric, prog_bar=True, batch_size=self.batch_size)
+        self.log("Force train MAE", self.force_train_metric, prog_bar=True, batch_size=self.batch_size)
         print("Current learning rate: ", self.trainer.optimizers[0].param_groups[0]["lr"])
 
     @torch.inference_mode(False)
@@ -160,9 +162,9 @@ class MD17Model(pl.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
-        self.log("Energy valid MAE", self.energy_valid_metric, prog_bar=True)
-        self.log("Force valid MAE", self.force_valid_metric, prog_bar=True)
-        self.log("val_loss", self.val_loss, prog_bar=True)
+        self.log("Energy valid MAE", self.energy_valid_metric, prog_bar=True, batch_size=self.batch_size)
+        self.log("Force valid MAE", self.force_valid_metric, prog_bar=True, batch_size=self.batch_size)
+        self.log("val_loss", self.val_loss, prog_bar=True, batch_size=self.batch_size)
 
     @torch.inference_mode(False)
     def test_step(self, graph, batch_idx):
@@ -198,9 +200,9 @@ class MD17Model(pl.LightningModule):
         return loss
 
     def on_test_epoch_end(self):
-        self.log("Energy test MAE", self.energy_test_metric, prog_bar=True)
-        self.log("Force test MAE", self.force_test_metric, prog_bar=True)
-        self.log("test_loss", self.test_loss, prog_bar=True)
+        self.log("Energy test MAE", self.energy_test_metric, prog_bar=True, batch_size=self.batch_size)
+        self.log("Force test MAE", self.force_test_metric, prog_bar=True, batch_size=self.batch_size)
+        self.log("test_loss", self.test_loss, prog_bar=True, batch_size=self.batch_size)
         # log the number of parameters of the model
         self.log("Number of parameters", sum(p.numel() for p in self.parameters() if p.requires_grad), prog_bar=True)
         

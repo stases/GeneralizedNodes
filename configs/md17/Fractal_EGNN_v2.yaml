@@ -1,15 +1,17 @@
 model_arch: Fractal_EGNN_v2
 depth: 2
 pool: "add"
-only_ground: True
+only_ground: False
+only_sub: False
 residual: False
 norm: "none"
 mask: True
 trainer: md17
-learning_rate: 0.0004
+learning_rate: 0.0002
 RFF_dim: 96
 RFF_sigma: 10
-epochs: 800
+epochs: 1200
+warmup_epochs: 50
 batch_size: 4
 subgraph_dict:
   mode: "fractal"
