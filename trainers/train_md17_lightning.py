@@ -37,8 +37,8 @@ def get_datasets(data_dir, device, name, batch_size, subgraph_dict = None ):
     train, valid = dataset[:950], dataset[950:1000]
     test = MD17(root=data_dir, name=name, train=False, transform=transform)
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=4)
-    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8)
+    valid_loader = DataLoader(valid, batch_size=batch_size, shuffle=False, num_workers=8)
     test_loader = DataLoader(test, batch_size=batch_size, shuffle=False)
     return train_loader, valid_loader, test_loader
 
