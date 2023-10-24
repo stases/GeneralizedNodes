@@ -18,6 +18,12 @@ from trainers.train_MNIST_lightning import MNISTModel
 from trainers.train_MNIST_upscale_lightning import MNISTSuperpixelsUpscale
 from trainers.train_wikics import train_wikics_model
 
+
+import warnings
+
+# Mute the specific warning by category and message
+warnings.filterwarnings("ignore", category=UserWarning, message="TypedStorage is deprecated.*")
+
 #####################
 #  Helper functions #
 MODEL_MAP = {
@@ -26,6 +32,7 @@ MODEL_MAP = {
     "transformernet": TransformerNet,
     "MPNN": MPNN,
     "Simple_MPNN": Simple_MPNN,
+    "Simple_Transformer_MPNN": Simple_Transformer_MPNN,
     "Transformer_MPNN": Transformer_MPNN,
     "EGNN": EGNN,
     "EGNN_Full": EGNN_Full,

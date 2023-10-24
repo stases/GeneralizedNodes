@@ -480,10 +480,15 @@ class Simple_Transformer_MPNN(nn.Module):
         self.sub_to_ground_mps = []
         for i in range(num_layers):
             #layer = GCNConv(node_features, hidden_features)
-            self.ground_mps.append(GCNConv(hidden_features, hidden_features))
-            self.ground_to_sub_mps.append(GCNConv(hidden_features, hidden_features))
-            self.sub_mps.append(GCNConv(hidden_features, hidden_features))
-            self.sub_to_ground_mps.append(GCNConv(hidden_features, hidden_features))
+            #self.ground_mps.append(GCNConv(hidden_features, hidden_features))
+            #self.ground_to_sub_mps.append(GCNConv(hidden_features, hidden_features))
+            #self.sub_mps.append(GCNConv(hidden_features, hidden_features))
+            #self.sub_to_ground_mps.append(GCNConv(hidden_features, hidden_features))
+            pass;
+        self.ground_mps = nn.ModuleList([GCNConv(hidden_features, hidden_features) for _ in range(num_layers)])
+        self.ground_to_sub_mps = nn.ModuleList([GCNConv(hidden_features, hidden_features) for _ in range(num_layers)])
+        self.sub_mps = nn.ModuleList([GCNConv(hidden_features, hidden_features) for _ in range(num_layers)])
+        self.sub_to_ground_mps = nn.ModuleList([GCNConv(hidden_features, hidden_features) for _ in range(num_layers)])
 
         self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
 
@@ -504,19 +509,19 @@ class Simple_Transformer_MPNN(nn.Module):
             x[~batch.ground_node] = x_backup
 
             x_backup = x[batch.ground_node]
-            x = self.ground_to_sub_mps[layer_idx](x, batch.ground_sub_edge_index)
+            x = self.ground_to_sub_mps[layer_idx](x, batch.node_subnode_index)
             x = self.activation(x)
             x = self.dropout(x)  # Apply dropout after each layer
             x[batch.ground_node] = x_backup
 
             x_backup = x[batch.ground_node]
-            x = self.sub_mps[layer_idx](x, batch.subnode_node_index)
+            x = self.sub_mps[layer_idx](x, batch.subgraph_edge_index)
             x = self.activation(x)
             x = self.dropout(x)  # Apply dropout after each layer
             x[batch.ground_node] = x_backup
 
             x_backup = x[~batch.ground_node]
-            x = self.sub_to_ground_mps[layer_idx](x, batch.subnode_ground_edge_index)
+            x = self.sub_to_ground_mps[layer_idx](x, batch.subnode_node_index)
             x = self.activation(x)
             x = self.dropout(x)  # Apply dropout after each layer
             x[~batch.ground_node] = x_backup

@@ -1,4 +1,4 @@
-model_arch: Simple_MPNN
+model_arch: Simple_Transformer_MPNN
 depth: 2
 pool: "none"
 sub_aggr: "mean"
@@ -7,17 +7,17 @@ residual: True
 norm: "layer"
 mask: False
 trainer: wikics
-learning_rate: 0.02
+learning_rate: 0.005
 subgraph_dict:
-  mode: "transformer_8"
+  mode: "transformer_4"
 dropout: 0.5
-epochs: 150
+epochs: 250
 transform: null
 batch_size: 64
 fully_connect: True
 hidden_features: 48
 edge_features: 0
-node_features: 308
+node_features: 304
 out_features: 10
 data_dir: "./data/wikics"
 model_dir: "./trained/wikics"

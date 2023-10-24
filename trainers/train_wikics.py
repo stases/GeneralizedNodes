@@ -13,6 +13,7 @@ MODEL_MAP = {
     "transformernet": TransformerNet,
     "MPNN": MPNN,
     "Simple_MPNN": Simple_MPNN,
+    "Simple_Transformer_MPNN": Simple_Transformer_MPNN,
     "Transformer_MPNN": Transformer_MPNN,
     "EGNN": EGNN,
     "EGNN_Full": EGNN_Full,
@@ -40,7 +41,7 @@ def train_wikics_split(model, epochs, mask_idx, dataset, batch_size, optimizer, 
         dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=1,
+        num_workers=4,
     )
     # Best validation accuracy and corresponding epoch
     best_val_acc = 0.0
@@ -55,7 +56,8 @@ def train_wikics_split(model, epochs, mask_idx, dataset, batch_size, optimizer, 
 
         # Training phase
         for batch in loader:
-            batch = batch.to(device)
+            batch = batch.to("cuda")
+            # Check if the model and the data are on GPU
             optimizer.zero_grad()
             output = model(batch)
             y = batch.y
@@ -111,8 +113,10 @@ def train_wikics_split(model, epochs, mask_idx, dataset, batch_size, optimizer, 
     with torch.no_grad():
         test_loss = 0.0
         for batch in loader:
-            batch = batch.to(device)
+            batch = batch.to("cuda")
             y = batch.y
+
+
             output = model(batch)
             if subgraph_flag:
                 output = output[batch.ground_node]
@@ -140,6 +144,7 @@ def train_wikics_model(data_dir, model_arch, learning_rate, epochs, batch_size, 
         subgraph_flag = True
         mode = subgraph_dict['mode']
         transform = Graph_to_Subgraph(mode=mode)
+        print("Using subgraph mode: ", mode)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     for mask_idx in range(20):
@@ -151,8 +156,8 @@ def train_wikics_model(data_dir, model_arch, learning_rate, epochs, batch_size, 
         if "model" in kwargs:
             kwargs.pop("model")
         model = model_class(**kwargs)
-        model = model.to(device)
-
+        model = model.to("cuda")
+        # Check if the model is on the GPU
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
         scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
         criterion = nn.CrossEntropyLoss()
