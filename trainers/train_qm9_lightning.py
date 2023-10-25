@@ -11,7 +11,6 @@ import wandb
 import torchmetrics
 from torch_geometric.datasets import QM9
 
-_ = torch.cuda.current_device()
 
 class CosineWarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):

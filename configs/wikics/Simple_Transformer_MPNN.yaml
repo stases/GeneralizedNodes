@@ -1,5 +1,5 @@
 model_arch: Simple_Transformer_MPNN
-depth: 2
+depth: 4
 pool: "none"
 sub_aggr: "mean"
 only_ground: True
@@ -7,11 +7,11 @@ residual: True
 norm: "layer"
 mask: False
 trainer: wikics
-learning_rate: 0.01
+learning_rate: 0.005
 subgraph_dict:
   mode: "transformer_4"
 dropout: 0.4
-epochs: 100
+epochs: 400
 transform: null
 batch_size: 64
 fully_connect: True

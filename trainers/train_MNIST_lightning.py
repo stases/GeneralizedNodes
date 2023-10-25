@@ -42,9 +42,9 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     print("Transforms: ", transforms)
     assert len(train_set) + len(val_set) == len(train_val_set)
 
-    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False)
-    test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
+    val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
+    test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=4)
 
     return train_loader, val_loader, test_loader
 
@@ -70,7 +70,7 @@ class MNISTModel(pl.LightningModule):
     def training_step(self, graph):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y)
+        loss = F.cross_entropy(pred, graph.y.float())
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.train_metric(pred, graph.y)
@@ -83,7 +83,7 @@ class MNISTModel(pl.LightningModule):
     def validation_step(self, graph, batch_idx):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y)
+        loss = F.cross_entropy(pred, graph.y.float())
         self.val_loss = loss.item()
         self.valid_metric(pred, graph.y)
         return loss
@@ -95,7 +95,7 @@ class MNISTModel(pl.LightningModule):
     def test_step(self, graph, batch_idx):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y)
+        loss = F.cross_entropy(pred, graph.y.float())
         self.test_metric(pred, graph.y)
         return loss
 
