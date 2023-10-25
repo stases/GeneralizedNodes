@@ -679,7 +679,6 @@ class EGNN(nn.Module):
         
         return self.pred(out)  # (batch_size, out_features)
 
-
 class RelEGNN(nn.Module):
     def __init__(
             self,
@@ -752,6 +751,7 @@ class RelEGNN(nn.Module):
             out = self.pool(h, batch.batch)
 
         return self.pred(out)  # (batch_size, out_features)
+
 class Fractal_EGNN(nn.Module):
     def __init__(
             self,

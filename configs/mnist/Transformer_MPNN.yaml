@@ -7,7 +7,7 @@ pool: "add"
 sub_aggr: "mean"
 only_ground: False
 only_sub: True
-residual: True
+residual: False
 norm: "layer"
 mask: True
 subgraph_dict:

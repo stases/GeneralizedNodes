@@ -10,7 +10,7 @@ trainer: wikics
 learning_rate: 0.005
 subgraph_dict:
   mode: "transformer_4"
-dropout: 0.4
+dropout: 0.
 epochs: 400
 transform: null
 batch_size: 64

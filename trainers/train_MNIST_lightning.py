@@ -36,11 +36,14 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     train_val_set = tg.datasets.MNISTSuperpixels(root=data_dir, transform=transforms, train=True)
     # split train into train and val sets by taking the last 10% of the training set
     train_set = train_val_set[:int(len(train_val_set) * 0.9)]
+    # take only 50% of the train set to be the train set
+    train_set = train_set[int(len(train_set) * 0.5):]
+    #TODO: Remove the line above later
     val_set = train_val_set[int(len(train_val_set) * 0.9):]
     test_set = tg.datasets.MNISTSuperpixels(root=data_dir, transform=transforms, train=False)
     # print which transforms are we using
     print("Transforms: ", transforms)
-    assert len(train_set) + len(val_set) == len(train_val_set)
+    #assert len(train_set) + len(val_set) == len(train_val_set)
 
     train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
     val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
@@ -70,7 +73,8 @@ class MNISTModel(pl.LightningModule):
     def training_step(self, graph):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y.float())
+
+        loss = F.cross_entropy(pred, graph.y.long())
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.train_metric(pred, graph.y)
@@ -83,7 +87,8 @@ class MNISTModel(pl.LightningModule):
     def validation_step(self, graph, batch_idx):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y.float())
+
+        loss = F.cross_entropy(pred, graph.y.long())
         self.val_loss = loss.item()
         self.valid_metric(pred, graph.y)
         return loss
@@ -95,7 +100,7 @@ class MNISTModel(pl.LightningModule):
     def test_step(self, graph, batch_idx):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-        loss = F.cross_entropy(pred, graph.y.float())
+        loss = F.cross_entropy(pred,  graph.y.long())
         self.test_metric(pred, graph.y)
         return loss
 

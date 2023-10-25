@@ -6,8 +6,8 @@ num_ascend_heads: 0
 pool: "add"
 sub_aggr: "mean"
 only_ground: False
-only_sub: False
-residual: True
+only_sub: True
+residual: False
 norm: "layer"
 mask: True
 trainer: mnist
@@ -24,7 +24,7 @@ node_features: 5
 fully_connect: True
 edge_features: 0
 hidden_features: 48
-out_features: 1
+out_features: 10
 data_dir: "./data/mnist"
 model_dir: "./trained/mnist"
 log_dir: "./logs"
