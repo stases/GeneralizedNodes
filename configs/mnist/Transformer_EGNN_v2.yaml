@@ -21,7 +21,7 @@ batch_size: 64
 subgraph_dict:
   mode: "transformer_4"
 node_features: 5
-fully_connect: True
+fully_connect: False
 edge_features: 0
 hidden_features: 48
 out_features: 10

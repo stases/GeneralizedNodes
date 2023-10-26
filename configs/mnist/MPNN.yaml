@@ -14,7 +14,7 @@ RFF_sigma: null
 epochs: 70
 warmup_epochs: 5
 batch_size: 64
-fully_connect: True
+fully_connect: False
 hidden_features: 48
 subgraph_dict: null
 edge_features: 0

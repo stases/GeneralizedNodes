@@ -9,12 +9,12 @@ mask: True
 trainer: mnist
 learning_rate: 0.001
 radius: 8
-RFF_dim: null
-RFF_sigma: null
+RFF_dim: 96
+RFF_sigma: 10
 epochs: 70
 warmup_epochs: 5
 batch_size: 64
-fully_connect: True
+fully_connect: False
 hidden_features: 48
 subgraph_dict: null
 node_features: 1
