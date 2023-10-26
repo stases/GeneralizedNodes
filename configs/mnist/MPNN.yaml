@@ -1,5 +1,5 @@
 model_arch: MPNN
-depth: 4
+depth: 2
 pool: "add"
 sub_aggr: "mean"
 only_ground: True
@@ -12,8 +12,8 @@ radius: 8
 RFF_dim: null
 RFF_sigma: null
 epochs: 70
-warmup_epochs: 5
-batch_size: 64
+warmup_epochs: 2
+batch_size: 128
 fully_connect: False
 hidden_features: 48
 subgraph_dict: null

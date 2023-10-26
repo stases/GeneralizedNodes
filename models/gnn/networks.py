@@ -187,6 +187,96 @@ class Net(nn.Module):
         x = self.output_2(x)
         return x
 
+class Transformer_MPNN_v2(nn.Module):
+    """ Message Passing Neural Network """
+
+    def __init__(self, node_features, edge_features, hidden_features, out_features, depth, aggr="mean",
+                 act=nn.ReLU, pool="add", dropout=0.3, **kwargs):
+        super().__init__()
+        num_layers = depth
+        self.dropout = nn.Dropout(dropout)  # Dropout layer
+        self.embedder = nn.Sequential(nn.Linear(node_features, hidden_features),
+                                      act(),
+                                      nn.Linear(hidden_features, hidden_features))
+        self.depth = depth
+        ground_layers = []
+        ground_to_sub_layers = []
+        sub_layers = []
+        sub_to_ground_layers = []
+        norma_layers = []
+        for i in range(num_layers):
+            ground_layer = MPNNLayer(node_features=hidden_features,
+                              hidden_features=hidden_features,
+                              edge_features=edge_features,
+                              out_features=hidden_features,
+                              aggr=aggr,
+                              act=act
+                              )
+            ground_layers.append(ground_layer)
+            sub_layer = MPNNLayer(node_features=hidden_features,
+                                hidden_features=hidden_features,
+                                edge_features=edge_features,
+                                out_features=hidden_features,
+                                aggr=aggr,
+                                act=act
+                                )
+            sub_layers.append(sub_layer)
+            ground_to_sub_layer = MPNNLayer(node_features=hidden_features,
+                                hidden_features=hidden_features,
+                                edge_features=edge_features,
+                                out_features=hidden_features,
+                                aggr=aggr,
+                                act=act
+                                )
+            ground_to_sub_layers.append(ground_to_sub_layer)
+            sub_to_ground_layer = MPNNLayer(node_features=hidden_features,
+                                hidden_features=hidden_features,
+                                edge_features=edge_features,
+                                out_features=hidden_features,
+                                aggr=aggr,
+                                act=act
+                                )
+            sub_to_ground_layers.append(sub_to_ground_layer)
+            norma_layers.append(nn.LayerNorm(hidden_features))
+        self.ground_layers = nn.ModuleList(ground_layers)
+        self.ground_to_sub_layers = nn.ModuleList(ground_to_sub_layers)
+        self.sub_layers = nn.ModuleList(sub_layers)
+        self.sub_to_ground_layers = nn.ModuleList(sub_to_ground_layers)
+        self.norma_layers = nn.ModuleList(norma_layers)
+
+        self.pooler = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
+
+        self.head = nn.Sequential(nn.Linear(hidden_features, hidden_features),
+                                  act(),
+                                  nn.Linear(hidden_features, out_features))
+
+    def forward(self, batch):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+        x = self.embedder(x)
+        x = self.dropout(x)  # Apply dropout to node features
+
+        for i in range(self.depth):
+            x_0 = x
+            x = self.ground_layers[i](x, edge_index, edge_attr)
+            x_backup = x.clone()
+
+            x = self.ground_to_sub_layers[i](x, batch.node_subnode_index, edge_attr)
+            x = self.sub_layers[i](x, batch.subgraph_edge_index, edge_attr)
+            x[batch.ground_node] = x_backup[batch.ground_node]
+            x = self.sub_to_ground_layers[i](x, batch.subnode_node_index, edge_attr)
+            x = self.norma_layers[i](x)
+            x = self.dropout(x)  # Apply dropout after each layer
+            x = x + x_0
+        x = x[batch.ground_node]
+        batch.batch = batch.batch[batch.ground_node]
+        if self.pooler:
+            x = self.pooler(x, batch.batch)
+
+        x = self.head(x)
+        return x
+
 class MPNN(nn.Module):
     """ Message Passing Neural Network """
 
@@ -330,9 +420,17 @@ class Transformer_MPNN(nn.Module):
         self.sub_normalization = torch.nn.ModuleList()
         self.ascend_normalization = torch.nn.ModuleList()
 
-        self.embedder = nn.Sequential(nn.Linear(node_features, hidden_features),
-                                      act(),
-                                      nn.Linear(hidden_features, hidden_features))
+        # Modify the embedder to handle the two parts of input features separately
+        #TODO: dont forget you added this
+        self.embed_first_input = nn.Sequential(nn.Linear(1, hidden_features // 2),
+             act(),
+            nn.Linear(hidden_features // 2, hidden_features // 2))
+
+        self.embed_rest_inputs = nn.Sequential(
+            nn.Linear(node_features - 1, hidden_features // 2),
+            act(),
+            nn.Linear(hidden_features // 2, hidden_features // 2)
+        )
 
         for layer in range(depth):
             self.ground_mps.append(MPNNLayer(node_features=hidden_features,
@@ -361,7 +459,17 @@ class Transformer_MPNN(nn.Module):
         num_nodes = batch.x.shape[0]
         x = batch.x
         device = x.device
-        h = self.embedder(x)
+        # Split the input features
+        x_first = batch.x[:, :1]  # The first input feature
+        x_rest = batch.x[:, 1:]  # The rest of the features
+
+        # Embed the two parts separately
+        h_first = self.embed_first_input(x_first)
+        h_rest = self.embed_rest_inputs(x_rest)
+        # set h_rest to zeros
+        h_rest = torch.zeros_like(h_rest).to(device)
+        # Concatenate the two parts
+        h = torch.cat([h_first, h_rest], dim=1)
 
         for layer_idx in range(self.depth):
             # Residual connection

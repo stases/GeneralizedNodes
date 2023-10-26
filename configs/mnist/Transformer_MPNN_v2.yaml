@@ -1,27 +1,23 @@
-model_arch: Transformer_MPNN
+model_arch: Transformer_MPNN_v2
 depth: 1
-ascend_depth: 0
-num_heads: 1
-num_ascend_heads: 1
 pool: "add"
 sub_aggr: "mean"
 only_ground: True
-only_sub: False
 residual: True
 norm: "layer"
 mask: True
-subgraph_dict:
-  mode: "transformer_4"
 trainer: mnist
-learning_rate: 0.0005
+learning_rate: 0.002
 radius: 8
-RFF_dim: 32
-RFF_sigma: 6
-epochs: 70
+RFF_dim: null
+RFF_sigma: null
+epochs: 150
 warmup_epochs: 2
-batch_size: 2
+batch_size: 64
 fully_connect: False
 hidden_features: 48
+subgraph_dict:
+  mode: "transformer_4"
 edge_features: 0
 node_features: 5
 out_features: 10

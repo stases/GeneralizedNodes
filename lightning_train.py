@@ -33,6 +33,7 @@ MODEL_MAP = {
     "MPNN": MPNN,
     "RCGNN": RCGNN,
     "Transformer_MPNN": Transformer_MPNN,
+    "Transformer_MPNN_v2": Transformer_MPNN_v2,
     "EGNN": EGNN,
     "EGNN_Full": EGNN_Full,
     "RelEGNN": RelEGNN,

@@ -1,29 +1,30 @@
-model_arch: Transformer_MPNN
-depth: 1
+model_arch: Fractal_EGNN_v2
+depth: 2
 ascend_depth: 0
 num_heads: 1
-num_ascend_heads: 1
+num_ascend_heads: 0
 pool: "add"
-sub_aggr: "mean"
-only_ground: True
+sub_aggr: "add"
+only_ground: False
 only_sub: False
 residual: True
 norm: "layer"
 mask: True
-subgraph_dict:
-  mode: "transformer_4"
 trainer: mnist
-learning_rate: 0.0005
-radius: 8
-RFF_dim: 32
+learning_rate: 0.001
+RFF_dim: 48
 RFF_sigma: 6
-epochs: 70
+epochs: 100
+radius: 8
 warmup_epochs: 2
-batch_size: 2
-fully_connect: False
-hidden_features: 48
+batch_size: 16
+fully_connect: True
+subgraph_dict:
+  mode: "fractal"
+node_features: 1
+LABEL_INDEX: 7
 edge_features: 0
-node_features: 5
+hidden_features: 48
 out_features: 10
 data_dir: "./data/mnist"
 model_dir: "./trained/mnist"

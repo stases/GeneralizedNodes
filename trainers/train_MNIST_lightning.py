@@ -36,8 +36,10 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     train_val_set = tg.datasets.MNISTSuperpixels(root=data_dir, transform=transforms, train=True)
     # split train into train and val sets by taking the last 10% of the training set
     train_set = train_val_set[:int(len(train_val_set) * 0.9)]
+    # make the train set size of one batch
+    #train_set = train_set[:batch_size]
     # take only 50% of the train set to be the train set
-    train_set = train_set[int(len(train_set) * 0.5):]
+    #train_set = train_set[:int(len(train_set) * 0.1)]
     #TODO: Remove the line above later
     val_set = train_val_set[int(len(train_val_set) * 0.9):]
     test_set = tg.datasets.MNISTSuperpixels(root=data_dir, transform=transforms, train=False)
@@ -45,7 +47,7 @@ def get_datasets(data_dir, batch_size, radius, subgraph_dict=None):
     print("Transforms: ", transforms)
     #assert len(train_set) + len(val_set) == len(train_val_set)
 
-    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=4)
+    train_loader = tg.loader.DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=4)
     val_loader = tg.loader.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=4)
     test_loader = tg.loader.DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=4)
 
@@ -73,16 +75,19 @@ class MNISTModel(pl.LightningModule):
     def training_step(self, graph):
         graph = graph.to(self.device)
         pred = self(graph).squeeze()
-
+        #print("pred is: ", pred)
+        #print("pred shape is: ", pred.shape)
         loss = F.cross_entropy(pred, graph.y.long())
 
         cur_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.train_metric(pred, graph.y)
+        self.train_loss = loss.item()
         self.log("lr", cur_lr, prog_bar=True, on_step=True)
         return loss
 
     def on_train_epoch_end(self):
         self.log("train acc", self.train_metric, prog_bar=True)
+        self.log("train loss", self.train_loss, prog_bar=True)
 
     def validation_step(self, graph, batch_idx):
         graph = graph.to(self.device)

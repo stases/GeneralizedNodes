@@ -1,21 +1,21 @@
 model_arch: Transformer_EGNN_v2
-depth: 3
+depth: 1
 ascend_depth: 0
 num_heads: 1
 num_ascend_heads: 0
 pool: "add"
 sub_aggr: "mean"
-only_ground: False
-only_sub: True
-residual: False
+only_ground: True
+only_sub: False
+residual: True
 norm: "layer"
 mask: True
 trainer: mnist
 radius: 8
-learning_rate: 0.0008
+learning_rate: 0.002
 RFF_dim: 96
 RFF_sigma: 10
-epochs: 70
+epochs: 150
 warmup_epochs: 5
 batch_size: 64
 subgraph_dict:
