@@ -424,7 +424,7 @@ class MPNNLayer(tg.nn.MessagePassing):
         update = self.update_net(input)
         return update
 class EGNNLayer(tg.nn.MessagePassing):
-    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None):
+    def __init__(self, emb_dim, activation="relu", norm="layer", aggr="add", RFF_dim=None, RFF_sigma=None, mask=None, use_edge_mlp=True):
         """E(n) Equivariant GNN Layer
 
         Paper: E(n) Equivariant Graph Neural Networks, Satorras et al.
@@ -465,6 +465,10 @@ class EGNNLayer(tg.nn.MessagePassing):
             self.norm(emb_dim) if norm != "none" else nn.Identity(),
             self.activation,
         )
+        if use_edge_mlp:
+            self.edge_mlp = nn.Sequential(nn.Linear(emb_dim, 1), nn.Sigmoid())
+        else:
+            self.edge_mlp = nn.Identity()
         if self.RFF_dim is not None:
             self.RFF = RFF(1, RFF_dim, RFF_sigma)
 
@@ -490,6 +494,8 @@ class EGNNLayer(tg.nn.MessagePassing):
             dists = self.RFF(dists)
         msg = torch.cat([h_i, h_j, dists], dim=-1)
         msg = self.mlp_msg(msg)
+        edge_weights = self.edge_mlp(msg)
+        msg = msg * edge_weights
         # Scale magnitude of displacement vector
         return msg
 

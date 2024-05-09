@@ -730,6 +730,7 @@ class EGNN(nn.Module):
             RFF_dim=None,
             RFF_sigma=None,
             return_pos=False,
+            use_edge_mlp=True,
             **kwargs
     ):
         """E(n) Equivariant GNN model
@@ -755,7 +756,8 @@ class EGNN(nn.Module):
         # Stack of GNN layers
         self.convs = torch.nn.ModuleList()
         for layer in range(depth):
-            self.convs.append(EGNNLayer(hidden_features, activation, norm, aggr, RFF_dim, RFF_sigma))
+            self.convs.append(EGNNLayer(emb_dim=hidden_features, activation=activation, norm=norm,
+                                        RFF_dim=RFF_dim, RFF_sigma=RFF_sigma, use_edge_mlp=use_edge_mlp))
 
         # Global pooling/readout function
         self.pool = {"mean": tg.nn.global_mean_pool, "add": tg.nn.global_add_pool, "none": None}[pool]
